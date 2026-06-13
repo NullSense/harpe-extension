@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harpe</title>
+  <link rel="stylesheet" href="css/popup.css" />
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <img src="icons/icon32.png" alt="" class="logo" />
+      <span class="app-name">Harpe</span>
+    </div>
+    <div class="header-right">
+      <button id="btn-rescan" class="btn-secondary">Rescan</button>
+    </div>
+  </header>
+
+  <div class="page-title-bar">
+    <span id="page-title" class="page-title"></span>
+    <span id="count" class="count"></span>
+  </div>
+
+  <div id="status" class="status scanning">Initialising…</div>
+
+  <div class="toolbar">
+    <button id="btn-select-all" class="btn-secondary">Select all</button>
+    <button id="btn-clear" class="btn-secondary">Clear</button>
+    <button id="btn-grab" class="btn-primary" disabled>Grab</button>
+  </div>
+
+  <main id="grid" class="grid"></main>
+
+  <script src="js/popup.js"></script>
+</body>
+</html>

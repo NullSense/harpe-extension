@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Harpe",
+  "version": "1.0.0",
+  "description": "Scan the live DOM for images, pick what you want, and grab them via the local Harpe engine.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "nativeMessaging",
+    "notifications",
+    "storage",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Harpe – grab images",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "js/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["js/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["css/popup.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "com.nullsense.harpe",
+  "description": "Harpe native messaging host — pipes image URLs to the harpe download engine.",
+  "path": "__HOST_PATH__",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://__EXTENSION_ID__/"
+  ]
+}

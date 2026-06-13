@@ -1,0 +1,276 @@
+/* ── Harpe popup / side-panel styles ───────────────────────────────────────── */
+
+:root {
+  --bg: #1a1a1e;
+  --surface: #26262c;
+  --border: #3a3a44;
+  --accent: #7c6af7;
+  --accent-hover: #9080ff;
+  --text: #e4e4f0;
+  --text-muted: #888899;
+  --ok: #3ecf8e;
+  --warn: #f5a623;
+  --error: #ff4d4f;
+  --card-size: 140px;
+  --radius: 8px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo {
+  width: 20px;
+  height: 20px;
+  image-rendering: crisp-edges;
+}
+
+.app-name {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+/* ── Page title bar ────────────────────────────────────────────────────────── */
+
+.page-title-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 6px 14px;
+  gap: 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.page-title {
+  flex: 1;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.count {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Status bar ────────────────────────────────────────────────────────────── */
+
+.status {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.status.scanning { color: var(--text-muted); }
+.status.ok       { color: var(--ok); }
+.status.warn     { color: var(--warn); }
+.status.error    { color: var(--error); }
+
+/* ── Toolbar ──────────────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 41px; /* height of header */
+  z-index: 9;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  margin-left: auto;
+  font-size: 13px;
+  padding: 6px 16px;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #4a4a58;
+}
+
+/* ── Grid ─────────────────────────────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-size), 1fr));
+  gap: 8px;
+  padding: 12px 14px;
+  align-content: start;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 32px 0;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────────── */
+
+.card {
+  position: relative;
+  background: var(--surface);
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.12s, opacity 0.12s;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.card:hover {
+  border-color: var(--accent);
+}
+
+.card.selected {
+  border-color: var(--accent);
+  background: #2d2846;
+}
+
+.card.dim {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.card.error .thumb {
+  display: none;
+}
+
+.thumb {
+  width: 100%;
+  flex: 1;
+  object-fit: cover;
+  display: block;
+  min-height: 0;
+}
+
+.info {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 3px 6px;
+  background: rgba(0,0,0,0.55);
+  font-size: 10px;
+  gap: 4px;
+}
+
+.dims {
+  color: var(--text);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.area {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Selection checkmark ───────────────────────────────────────────────────── */
+
+.checkmark {
+  display: none;
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+}
+
+.card.selected .checkmark {
+  display: block;
+}
+
+/* ── Per-image result badge ───────────────────────────────────────────────── */
+
+.result-badge {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.result-badge.ok {
+  background: rgba(62, 207, 142, 0.35);
+  color: var(--ok);
+}
+
+.result-badge.fail {
+  background: rgba(255, 77, 79, 0.35);
+  color: var(--error);
+}
