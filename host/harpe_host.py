@@ -65,16 +65,28 @@ def write_message(stream, obj: dict) -> None:
 def find_harpe() -> str:
     """
     Locate the `harpe` binary.
-    Checks PATH first, then common uv tool install locations.
+
+    Native-messaging hosts are launched by the browser with a minimal
+    environment — the user's shell PATH (and additions like ~/bin) is often
+    absent — so PATH lookup alone is unreliable. We therefore check, in order:
+      1. an explicit HARPE_BIN override
+      2. PATH (works if the browser inherited a full PATH)
+      3. common install / shim locations, including ~/bin
     """
-    # 1. On PATH (most common after `uv tool install harpe`)
+    # 1. Explicit override — set HARPE_BIN in the host manifest's env if needed.
+    override = os.environ.get("HARPE_BIN")
+    if override and os.path.isfile(override) and os.access(override, os.X_OK):
+        return override
+
+    # 2. On PATH (most common after `uv tool install harpe`)
     found = shutil.which("harpe")
     if found:
         return found
 
-    # 2. uv tool install puts binaries in ~/.local/bin on Linux/macOS
+    # 3. Common locations: uv (~/.local/bin), cargo, and a personal ~/bin shim.
     candidates = [
         os.path.expanduser("~/.local/bin/harpe"),
+        os.path.expanduser("~/bin/harpe"),
         os.path.expanduser("~/.cargo/bin/harpe"),  # in case installed via cargo
     ]
     for c in candidates:
@@ -82,7 +94,8 @@ def find_harpe() -> str:
             return c
 
     raise FileNotFoundError(
-        "harpe binary not found. Install it with: uv tool install harpe"
+        "harpe binary not found. Install it with: uv tool install harpe, "
+        "or set HARPE_BIN to its absolute path."
     )
 
 
