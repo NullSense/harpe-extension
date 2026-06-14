@@ -29,6 +29,15 @@ const $btnGrab = document.getElementById("btn-grab");
 const $btnRescan = document.getElementById("btn-rescan");
 const $pageTitle = document.getElementById("page-title");
 const $count = document.getElementById("count");
+const $hostHint = document.getElementById("host-hint");
+
+// A grab error means the native helper is missing/unreachable when the message
+// mentions the host or the connection (vs. a normal per-image download failure).
+function looksLikeHostError(msg) {
+  return /native (messaging )?host|not found|connect to native|disconnected|host not|No such file/i.test(
+    String(msg || "")
+  );
+}
 const $btnSettings = document.getElementById("btn-settings");
 const $settings = document.getElementById("settings");
 const $dest = document.getElementById("dest");
@@ -227,6 +236,7 @@ async function doGrab() {
   if (!scanResult || selected.size === 0 || grabInProgress) return;
   grabInProgress = true;
   $btnGrab.disabled = true;
+  $hostHint.hidden = true;
   setStatus(`Downloading ${selected.size} image(s)…`, "scanning");
 
   // Grey-out non-selected cards
@@ -244,6 +254,14 @@ async function doGrab() {
     });
 
     if (!result) throw new Error("No response from background");
+
+    // Whole-grab failure (e.g. native helper missing) — no per-image results.
+    if (result.ok === false && (!result.results || result.results.length === 0)) {
+      const msg = result.error || "Grab failed";
+      setStatus(msg, "error");
+      if (looksLikeHostError(msg)) $hostHint.hidden = false;
+      return;
+    }
 
     // Annotate cards with per-image results
     if (result.results) {
@@ -270,6 +288,7 @@ async function doGrab() {
     }
   } catch (err) {
     setStatus("Grab failed: " + err.message, "error");
+    if (looksLikeHostError(err.message)) $hostHint.hidden = false;
   } finally {
     grabInProgress = false;
     // Restore dim cards

@@ -1,143 +1,151 @@
 #!/usr/bin/env bash
-# install.sh — Install the Harpe native messaging host for Chrome and/or Firefox.
+# install.sh — register the Harpe native messaging host for every browser found.
 #
-# Usage:
-#   ./install.sh --chrome-id <EXTENSION_ID>
-#   ./install.sh --firefox-id <ADDON_ID>
-#   ./install.sh --chrome-id <EXTENSION_ID> --firefox-id <ADDON_ID>
+# One command does everything:
 #
-# The EXTENSION_ID for Chrome looks like: abcdefghijklmnopabcdefghijklmnop
-# The ADDON_ID for Firefox looks like:    harpe@nullsense.com  (set in manifest.json)
+#     ./install.sh
 #
-# Native messaging host manifest locations:
+# It bakes in Harpe's stable extension IDs (see EXTENSION_ID / GECKO_ID below),
+# auto-detects which browsers are installed, and writes the host manifest into
+# each one's NativeMessagingHosts directory. Re-run it any time (e.g. after
+# moving the repo) — it's idempotent.
 #
-#   Chrome on Linux:
-#     Per-user:   ~/.config/google-chrome/NativeMessagingHosts/
-#     System:     /etc/opt/chrome/native-messaging-hosts/
+# Options:
+#   --chrome-id <ID>    ALSO allow this Chromium extension ID (e.g. the Chrome
+#                       Web Store ID once published). Repeatable.
+#   --firefox-id <ID>   ALSO allow this Firefox add-on ID. Repeatable.
+#   --all               Write to every known browser dir, even if not detected.
+#   --uninstall         Remove the host manifest from all browsers.
 #
-#   Chromium on Linux:
-#     Per-user:   ~/.config/chromium/NativeMessagingHosts/
-#     System:     /etc/chromium/native-messaging-hosts/
-#
-#   Chrome on macOS:
-#     Per-user:   ~/Library/Application Support/Google/Chrome/NativeMessagingHosts/
-#     System:     /Library/Google/Chrome/NativeMessagingHosts/
-#
-#   Firefox on Linux:
-#     Per-user:   ~/.mozilla/native-messaging-hosts/
-#     System:     /usr/lib/mozilla/native-messaging-hosts/
-#
-#   Firefox on macOS:
-#     Per-user:   ~/Library/Application Support/Mozilla/NativeMessagingHosts/
-#     System:     /Library/Application Support/Mozilla/NativeMessagingHosts/
+# Native-messaging host manifest locations are documented inline below.
 
 set -euo pipefail
 
-# ── Locate this script's directory ──────────────────────────────────────────
+# ── Stable identities (derived from extension/manifest.json "key") ─────────────
+EXTENSION_ID="ginhcamellmffiamggkiaemdklcnechf"   # Chromium: id from the manifest "key"
+GECKO_ID="harpe@nullsense.com"                     # Firefox: browser_specific_settings.gecko.id
+HOST_NAME="com.nullsense.harpe"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST_SCRIPT="$SCRIPT_DIR/harpe_host.py"
-MANIFEST_CHROME="$SCRIPT_DIR/com.nullsense.harpe.json"
-MANIFEST_FIREFOX="$SCRIPT_DIR/com.nullsense.harpe.firefox.json"
-MANIFEST_NAME="com.nullsense.harpe.json"
+MANIFEST_FILE="$HOST_NAME.json"
 
-# ── Argument parsing ─────────────────────────────────────────────────────────
-
-CHROME_ID=""
-FIREFOX_ID=""
+CHROME_IDS=("$EXTENSION_ID")
+FIREFOX_IDS=("$GECKO_ID")
+FORCE_ALL=0
+UNINSTALL=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --chrome-id)  CHROME_ID="$2";  shift 2 ;;
-    --firefox-id) FIREFOX_ID="$2"; shift 2 ;;
+    --chrome-id)  CHROME_IDS+=("$2"); shift 2 ;;
+    --firefox-id) FIREFOX_IDS+=("$2"); shift 2 ;;
+    --all)        FORCE_ALL=1; shift ;;
+    --uninstall)  UNINSTALL=1; shift ;;
+    -h|--help)    sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
 
-if [[ -z "$CHROME_ID" && -z "$FIREFOX_ID" ]]; then
-  echo "Usage: $0 --chrome-id <ID> [--firefox-id <ADDON_ID>]" >&2
-  echo "       $0 --firefox-id <ADDON_ID>" >&2
-  exit 1
-fi
-
-# ── Sanity checks ────────────────────────────────────────────────────────────
-
-if [[ ! -f "$HOST_SCRIPT" ]]; then
-  echo "ERROR: Host script not found: $HOST_SCRIPT" >&2
-  exit 1
-fi
-
-# Ensure the host script is executable
+[[ -f "$HOST_SCRIPT" ]] || { echo "ERROR: host script not found: $HOST_SCRIPT" >&2; exit 1; }
 chmod +x "$HOST_SCRIPT"
+command -v python3 >/dev/null || { echo "ERROR: python3 is required but not found." >&2; exit 1; }
 
-# Ensure Python 3 is available
-if ! command -v python3 &>/dev/null; then
-  echo "ERROR: python3 is required but not found in PATH." >&2
-  exit 1
+# ── Per-OS browser → NativeMessagingHosts directories ──────────────────────────
+OS="$(uname -s)"
+declare -a CHROMIUM_DIRS=()   # use allowed_origins (chrome-extension://ID/)
+declare -a FIREFOX_DIRS=()    # use allowed_extensions (gecko id)
+
+if [[ "$OS" == "Darwin" ]]; then
+  A="$HOME/Library/Application Support"
+  CHROMIUM_DIRS=(
+    "$A/Google/Chrome" "$A/Google/Chrome Beta" "$A/Chromium"
+    "$A/BraveSoftware/Brave-Browser" "$A/Microsoft Edge" "$A/Vivaldi" "$A/net.imput.helium"
+  )
+  FIREFOX_DIRS=("$A/Mozilla" "$A/LibreWolf" "$A/zen")
+  CH_SUB="NativeMessagingHosts"; FF_SUB="NativeMessagingHosts"
+else
+  C="$HOME/.config"
+  CHROMIUM_DIRS=(
+    "$C/google-chrome" "$C/google-chrome-beta" "$C/chromium"
+    "$C/BraveSoftware/Brave-Browser" "$C/microsoft-edge" "$C/vivaldi" "$C/helium"
+  )
+  FIREFOX_DIRS=("$HOME/.mozilla" "$HOME/.librewolf" "$HOME/.zen")
+  CH_SUB="NativeMessagingHosts"; FF_SUB="native-messaging-hosts"
 fi
 
-# ── OS detection ─────────────────────────────────────────────────────────────
-
-OS="$(uname -s)"
-
-case "$OS" in
-  Linux)
-    CHROME_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"
-    CHROMIUM_DIR="$HOME/.config/chromium/NativeMessagingHosts"
-    FIREFOX_DIR="$HOME/.mozilla/native-messaging-hosts"
-    ;;
-  Darwin)
-    CHROME_DIR="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
-    CHROMIUM_DIR="$HOME/Library/Application Support/Chromium/NativeMessagingHosts"
-    FIREFOX_DIR="$HOME/Library/Application Support/Mozilla/NativeMessagingHosts"
-    ;;
-  *)
-    echo "WARNING: Unsupported OS '$OS'. Manifest paths may be wrong." >&2
-    CHROME_DIR="$HOME/.config/google-chrome/NativeMessagingHosts"
-    CHROMIUM_DIR="$HOME/.config/chromium/NativeMessagingHosts"
-    FIREFOX_DIR="$HOME/.mozilla/native-messaging-hosts"
-    ;;
-esac
-
-# ── Helper: write manifest ───────────────────────────────────────────────────
-
-install_manifest() {
-  local src="$1"     # template file
-  local dest_dir="$2"
-  local extra_sed="$3"  # extra sed expression (for IDs)
-
+# ── JSON writers ───────────────────────────────────────────────────────────────
+write_chrome_manifest() {
+  local dest_dir="$1/$CH_SUB"
   mkdir -p "$dest_dir"
-  local dest="$dest_dir/$MANIFEST_NAME"
-
-  sed \
-    -e "s|__HOST_PATH__|$HOST_SCRIPT|g" \
-    ${extra_sed:+-e "$extra_sed"} \
-    "$src" > "$dest"
-
-  echo "  Installed: $dest"
+  {
+    printf '{\n'
+    printf '  "name": "%s",\n' "$HOST_NAME"
+    printf '  "description": "Harpe native messaging host — pipes image URLs to the harpe download engine.",\n'
+    printf '  "path": "%s",\n' "$HOST_SCRIPT"
+    printf '  "type": "stdio",\n'
+    printf '  "allowed_origins": [\n'
+    local first=1 id
+    for id in "${CHROME_IDS[@]}"; do
+      [[ $first -eq 1 ]] && first=0 || printf ',\n'
+      printf '    "chrome-extension://%s/"' "$id"
+    done
+    printf '\n  ]\n}\n'
+  } > "$dest_dir/$MANIFEST_FILE"
+  echo "  ✓ $dest_dir/$MANIFEST_FILE"
 }
 
-# ── Chrome / Chromium ────────────────────────────────────────────────────────
+write_firefox_manifest() {
+  local dest_dir="$1/$FF_SUB"
+  mkdir -p "$dest_dir"
+  {
+    printf '{\n'
+    printf '  "name": "%s",\n' "$HOST_NAME"
+    printf '  "description": "Harpe native messaging host — pipes image URLs to the harpe download engine.",\n'
+    printf '  "path": "%s",\n' "$HOST_SCRIPT"
+    printf '  "type": "stdio",\n'
+    printf '  "allowed_extensions": [\n'
+    local first=1 id
+    for id in "${FIREFOX_IDS[@]}"; do
+      [[ $first -eq 1 ]] && first=0 || printf ',\n'
+      printf '    "%s"' "$id"
+    done
+    printf '\n  ]\n}\n'
+  } > "$dest_dir/$MANIFEST_FILE"
+  echo "  ✓ $dest_dir/$MANIFEST_FILE"
+}
 
-if [[ -n "$CHROME_ID" ]]; then
-  echo "Installing Chrome/Chromium native messaging host (ID: $CHROME_ID)…"
-  ID_SED="s|__EXTENSION_ID__|$CHROME_ID|g"
-  install_manifest "$MANIFEST_CHROME" "$CHROME_DIR"   "$ID_SED"
-  install_manifest "$MANIFEST_CHROME" "$CHROMIUM_DIR" "$ID_SED"
-  echo "  Done. Reload the extension in chrome://extensions if already loaded."
+remove_manifest() { # $1 = browser base dir, $2 = subdir
+  local f="$1/$2/$MANIFEST_FILE"
+  [[ -f "$f" ]] && { rm -f "$f"; echo "  ✗ removed $f"; }
+}
+
+# ── Run ────────────────────────────────────────────────────────────────────────
+if [[ $UNINSTALL -eq 1 ]]; then
+  echo "Removing Harpe native host…"
+  for d in "${CHROMIUM_DIRS[@]}"; do remove_manifest "$d" "$CH_SUB"; done
+  for d in "${FIREFOX_DIRS[@]}";  do remove_manifest "$d" "$FF_SUB"; done
+  echo "Done."
+  exit 0
 fi
 
-# ── Firefox ──────────────────────────────────────────────────────────────────
+echo "Installing Harpe native host"
+echo "  host script : $HOST_SCRIPT"
+echo "  Chromium IDs: ${CHROME_IDS[*]}"
+echo "  Firefox IDs : ${FIREFOX_IDS[*]}"
+echo
 
-if [[ -n "$FIREFOX_ID" ]]; then
-  echo "Installing Firefox native messaging host (addon ID: $FIREFOX_ID)…"
-  ID_SED="s|__FIREFOX_EXTENSION_ID__|$FIREFOX_ID|g"
-  install_manifest "$MANIFEST_FIREFOX" "$FIREFOX_DIR" "$ID_SED"
-  echo "  Done. Reload the extension in about:debugging if already loaded."
+wrote=0
+for d in "${CHROMIUM_DIRS[@]}"; do
+  if [[ $FORCE_ALL -eq 1 || -d "$d" ]]; then write_chrome_manifest "$d"; wrote=$((wrote+1)); fi
+done
+for d in "${FIREFOX_DIRS[@]}"; do
+  if [[ $FORCE_ALL -eq 1 || -d "$d" ]]; then write_firefox_manifest "$d"; wrote=$((wrote+1)); fi
+done
+
+echo
+if [[ $wrote -eq 0 ]]; then
+  echo "No supported browsers detected. Re-run with --all to write to every known location."
+else
+  echo "Installed into $wrote browser profile dir(s)."
 fi
-
-echo ""
-echo "Harpe native host installed successfully."
-echo "Host script: $HOST_SCRIPT"
-echo ""
-echo "Make sure 'harpe' is installed: uv tool install harpe"
+echo "Make sure 'harpe' is installed (uv tool install harpe) or on PATH / in ~/bin."

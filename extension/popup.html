@@ -49,6 +49,20 @@
 
   <div id="status" class="status scanning">Initialising…</div>
 
+  <!-- Shown when the native helper isn't installed/reachable -->
+  <div id="host-hint" class="host-hint" hidden>
+    <p class="host-hint-title">Native helper not set up</p>
+    <p>
+      Harpe downloads through a small local helper. Install it once:
+    </p>
+    <pre class="host-hint-cmd">cd harpe-extension/host &amp;&amp; ./install.sh</pre>
+    <p>
+      You also need the <code>harpe</code> engine
+      (<code>uv tool install harpe</code>), then reload this extension.
+      <a id="host-hint-link" href="https://github.com/NullSense/harpe-extension#installation" target="_blank" rel="noopener">Setup guide →</a>
+    </p>
+  </div>
+
   <div class="toolbar">
     <button id="btn-select-all" class="btn-secondary">Select all</button>
     <button id="btn-clear" class="btn-secondary">Clear</button>

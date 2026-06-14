@@ -3,6 +3,12 @@
   "name": "Harpe",
   "version": "1.1.0",
   "description": "Scan the live DOM for images, pick what you want, and grab them via the local Harpe engine.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyTCT1W/tXPQp5sCODBtLOyYquZPTiawf7W6HihcZNLN7ww/UjULoUkC9uGxIoSDULDMh2oG4HR9N/r9XDSl7V//MqpYnEJOiHMPtKqVOe9lm0H/OMPtXtsdfJlKJEk8r0nF5EfcDp0ESveVWBM9j9uDgMl9WHT8gpdzfLGJ5ZIRjCzOCFdr+KC45FMKlXGtQCnkSUhnqPbayJ1FDwvsxoR5Gs7FOyoE21Wdr1wx30C02JSlKzQwEHslzX16JADW39Tv0bvX9D3pUaNlVKnxH9eFAG62qUGnz/vvw/DEpU7oODFMJZCpoNBEDi2iOgjlcduahJWyXyuZuU1sz3r0PPQIDAQAB",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "harpe@nullsense.com"
+    }
+  },
   "permissions": [
     "activeTab",
     "scripting",

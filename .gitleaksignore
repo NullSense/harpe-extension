@@ -1,0 +1,3 @@
+# The manifest "key" is the PUBLIC half of the extension signing key. It is
+# meant to be committed — it's what pins the stable extension ID. Not a secret.
+extension/manifest.json:generic-api-key:6

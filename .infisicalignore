@@ -1,0 +1,3 @@
+# Public extension signing key in manifest.json — pins the stable extension ID,
+# meant to be committed. Not a secret.
+extension/manifest.json:generic-api-key:6

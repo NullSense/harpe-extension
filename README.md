@@ -64,86 +64,109 @@ No build step required — the extension is plain vanilla JS (ES2020).
 
 ## Installation
 
-### Step 1 — Load the extension
+Harpe has a **stable extension ID** baked into `manifest.json` (via the `"key"`
+field), so the native host only has to be registered once — no per-load ID
+juggling.
 
-**Chrome / Chromium:**
-1. Open `chrome://extensions`
-2. Enable **Developer mode** (top-right toggle)
-3. Click **Load unpacked** → select the `extension/` folder
-4. Copy the **Extension ID** shown (32-character string, e.g. `abcdefghijklmnopabcdefghijklmnop`)
+- Chromium ID: `ginhcamellmffiamggkiaemdklcnechf`
+- Firefox ID:  `harpe@nullsense.com`
 
-**Firefox:**
-1. Open `about:debugging#/runtime/this-firefox`
-2. Click **Load Temporary Add-on…** → select `extension/manifest.json`
-   - For permanent installation, pack as `.xpi` and set an explicit `browser_specific_settings.gecko.id` in manifest.json first (e.g. `harpe@nullsense.com`)
-3. Note the **Internal UUID** shown (used as the Firefox extension ID for native messaging)
-
-### Step 2 — Install the native messaging host
+### Step 1 — Install the `harpe` engine
 
 ```sh
-cd host/
-
-# Chrome only
-./install.sh --chrome-id abcdefghijklmnopabcdefghijklmnop
-
-# Firefox only
-./install.sh --firefox-id harpe@nullsense.com
-
-# Both
-./install.sh --chrome-id abcdefghijklmnopabcdefghijklmnop \
-             --firefox-id harpe@nullsense.com
+uv tool install harpe      # or have `harpe` on PATH / in ~/bin
+harpe --help               # verify
 ```
 
-The script:
-- Substitutes the extension ID and absolute host path into the manifest template
-- Copies the manifest to the correct NativeMessagingHosts directory for your OS and browser
-- Makes `harpe_host.py` executable
+### Step 2 — Register the native host (one command)
+
+```sh
+# macOS / Linux — auto-detects every installed browser, no arguments needed:
+host/install.sh
+
+# Windows (Chrome, Chromium, Edge, Brave, Firefox):
+host\install_host.bat
+```
+
+`install.sh` writes the host manifest into the `NativeMessagingHosts` directory
+of each browser it finds (Chrome, Chromium, Brave, Edge, Vivaldi, Helium,
+Firefox, LibreWolf, Zen). Useful flags:
+
+| Flag | Effect |
+|------|--------|
+| _(none)_ | install for all detected browsers using the baked IDs |
+| `--all` | also write to browsers that aren't detected yet |
+| `--chrome-id <ID>` | additionally allow another Chromium ID (e.g. the Web Store ID once published) |
+| `--firefox-id <ID>` | additionally allow another Firefox add-on ID |
+| `--uninstall` | remove the host manifest everywhere |
+
+### Step 3 — Load the extension
+
+**Chrome / Chromium / Edge / Brave / Helium:** `chrome://extensions` →
+**Developer mode** → **Load unpacked** → pick the `extension/` folder. The ID
+will be `ginhcamellmffiamggkiaemdklcnechf` (from the manifest `key`).
+
+**Firefox / Zen / LibreWolf:** `about:debugging#/runtime/this-firefox` →
+**Load Temporary Add-on…** → pick `extension/manifest.json`. The ID comes from
+`browser_specific_settings.gecko.id`.
+
+### Step 4 — Verify
+
+Open an image-heavy page, click the Harpe icon, pick images, **Grab**. If the
+helper isn't reachable the popup shows a setup hint. Test the host directly:
+
+```sh
+echo '{"urls":["https://example.com/test.jpg"],"referer":"https://example.com"}' \
+  | python3 host/harpe_host.py
+```
 
 ### Native messaging host manifest locations
 
-| Browser    | OS      | Per-user path |
-|------------|---------|---------------|
-| Chrome     | Linux   | `~/.config/google-chrome/NativeMessagingHosts/` |
-| Chromium   | Linux   | `~/.config/chromium/NativeMessagingHosts/` |
-| Chrome     | macOS   | `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` |
-| Firefox    | Linux   | `~/.mozilla/native-messaging-hosts/` |
-| Firefox    | macOS   | `~/Library/Application Support/Mozilla/NativeMessagingHosts/` |
+| Browser  | OS    | Per-user path |
+|----------|-------|---------------|
+| Chrome   | Linux | `~/.config/google-chrome/NativeMessagingHosts/` |
+| Chromium | Linux | `~/.config/chromium/NativeMessagingHosts/` |
+| Chrome   | macOS | `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` |
+| Firefox  | Linux | `~/.mozilla/native-messaging-hosts/` |
+| Firefox  | macOS | `~/Library/Application Support/Mozilla/NativeMessagingHosts/` |
+| (Chrome/Edge/Brave/Firefox) | Windows | per-user **registry** keys under `HKCU\Software\…\NativeMessagingHosts\com.nullsense.harpe` |
 
-System-wide locations (require root) are documented in `install.sh`.
+## Distribution
 
-### Step 3 — Verify
+A browser store can ship the *extension*, but **not** the native messaging host:
+the store sandbox can't drop a file into `NativeMessagingHosts/` or touch the
+registry. So every native-messaging tool (1Password, KeePassXC, Plasma
+Integration, …) is **two pieces**: the extension from the store, and a local
+helper installed separately. The two-step is unavoidable; the goal is to make
+each step a single action:
 
-Open any image-heavy page, click the Harpe toolbar icon, and the side panel should open and scan the page. If the native host is unreachable, the "Grab" operation will show an error — check:
+1. **Extension** — one click from the Chrome Web Store / Firefox AMO (or "Load
+   unpacked" for dev). $5 one-time Chrome developer registration; zip the
+   `extension/` folder, fill the listing, justify the `nativeMessaging` /
+   `<all_urls>` permissions, submit for review. For a helper-dependent tool,
+   **"unlisted"** visibility or plain GitHub + Developer mode is often saner.
+2. **Helper** — one command: `host/install.sh` (or `install_host.bat`). The
+   popup links here automatically when the helper is missing.
 
-```sh
-# Test the host directly
-echo '{"urls":["https://example.com/test.jpg"],"referer":"https://example.com"}' | \
-  python3 host/harpe_host.py
-```
+**Python vs Rust?** The host can be *any* executable — a Python script (what we
+use), a shell script, or a compiled Go/Rust binary. A compiled binary is only
+worth it if you want a zero-dependency, single-file helper. Here it's pointless:
+`harpe` itself is Python, so Python is already required — the host stays a small
+`.py` (with a `.bat` shim on Windows, which needs `.exe`/`.bat`, not `.py`).
 
-## The extension-ID chicken-and-egg
+### Keeping dev and Web Store IDs the same
 
-Chrome generates the extension ID from the public key in the extension package. When loading **unpacked** in developer mode, the ID is derived from the path, so it **changes** if you move the folder. Firefox uses a UUID that changes each temporary load session.
+The published Chrome Web Store ID is assigned by Google when you first create the
+item, and may differ from the baked dev ID. To unify them, after creating the
+draft item open **Package → View public key**, copy it into `manifest.json`'s
+`"key"`, and re-run `host/install.sh --chrome-id <store-id>` (the host allows
+multiple origins, so dev + store IDs can both work).
 
-**Workarounds:**
-
-- **Chrome (stable ID):** Generate a key pair, put the public key in `manifest.json` under `"key"`, and Chrome will use a fixed ID derived from that key. Run `install.sh` once with that ID.
-
-  ```sh
-  openssl genrsa 2048 | openssl pkcs8 -topk8 -nocrypt -out key.pem
-  openssl rsa -in key.pem -pubout -outform DER | base64 -w0
-  # Paste the base64 output as "key": "..." in manifest.json
-  ```
-
-- **Firefox (stable ID):** Add to `manifest.json`:
-  ```json
-  "browser_specific_settings": {
-    "gecko": { "id": "harpe@nullsense.com" }
-  }
-  ```
-  Then use `--firefox-id harpe@nullsense.com` in `install.sh`.
-
-- **Development shortcut:** Run `install.sh` after each load with the new ID. It's a one-liner.
+> **Signing key:** the manifest `"key"` is the *public* half. The matching
+> private key lives **outside this repo** at `~/.config/harpe-extension/key.pem`
+> (git-ignored). Keep it safe — it's what proves ownership of the ID if you ever
+> self-distribute a signed `.crx`. Losing it just means a new ID; leaking it
+> lets someone publish under your ID.
 
 ## Where files are saved
 

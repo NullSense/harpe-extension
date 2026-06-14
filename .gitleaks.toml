@@ -1,0 +1,9 @@
+# Repo-local gitleaks config: keep the full default ruleset, but the Chrome
+# extension manifest "key" is a PUBLIC key (it pins the stable extension ID and
+# is meant to be committed), so allowlist that file.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public extension signing key in manifest.json"
+paths = ['''extension/manifest\.json''']
