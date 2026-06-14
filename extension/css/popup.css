@@ -168,6 +168,17 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   box-shadow: 0 0 0 2px rgba(201, 138, 60, 0.15);
 }
 
+.mode-line {
+  margin-bottom: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.mode-line.ok { color: var(--bronze-bright); }
+.mode-line a { color: var(--bronze); }
+.mode-line a:hover { color: var(--bronze-bright); }
+
 .settings-check {
   display: flex;
   align-items: flex-start;

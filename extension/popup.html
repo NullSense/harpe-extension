@@ -22,7 +22,8 @@
 
   <!-- Settings drawer (toggled by the gear) -->
   <section id="settings" class="settings" hidden>
-    <label class="settings-label" for="dest" id="dest-label">Save to (subfolder of Downloads)</label>
+    <p id="mode-line" class="mode-line">Checking for the Harpe engine…</p>
+    <label class="settings-label" for="dest" id="dest-label">Save to</label>
     <div class="settings-row">
       <input
         id="dest"
@@ -30,15 +31,10 @@
         type="text"
         spellcheck="false"
         autocomplete="off"
-        placeholder="harpe  (organised by site)"
+        placeholder="harpe"
       />
       <button id="btn-save-settings" class="btn-primary">Save</button>
     </div>
-    <label class="settings-check">
-      <input type="checkbox" id="use-engine" />
-      <span>Use the Harpe engine — save anywhere, plus video &amp; gigapixel
-        (needs the <a id="helper-link" href="https://github.com/NullSense/harpe-extension#installation" target="_blank" rel="noopener">helper</a>)</span>
-    </label>
     <p class="settings-help" id="settings-help">
       Images download to your <code>Downloads</code> folder, grouped by site. No setup needed.
     </p>

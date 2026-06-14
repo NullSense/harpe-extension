@@ -188,6 +188,12 @@ def main() -> None:
         if not msg:
             continue
 
+        # Liveness probe — lets the extension auto-detect that the helper is
+        # installed and silently upgrade to engine features (no manual toggle).
+        if msg.get("ping"):
+            write_message(stdout, {"ok": True, "pong": True})
+            continue
+
         urls = msg.get("urls", [])
         referer = msg.get("referer", "")
 

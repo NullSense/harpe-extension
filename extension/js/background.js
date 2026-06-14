@@ -54,20 +54,50 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (msg.type === "HARPE_PING") {
+    pingHost().then((available) => sendResponse({ available }));
+    return true;
+  }
+
   if (msg.type === "HARPE_GRAB") {
-    // Default: download in-browser via chrome.downloads (no helper needed).
-    // Opt-in: route through the native host (save anywhere / engine features).
-    const run = msg.useEngine
-      ? handleGrabHost(msg.urls, msg.referer, msg.folder)
-      : handleGrabBuiltin(msg.urls, msg.referer, msg.folder);
-    run.then(sendResponse).catch((err) =>
-      sendResponse({ ok: false, error: String(err) })
-    );
+    handleGrab(msg.urls, msg.referer, msg.folder)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
 
   return false;
 });
+
+// ── Helper detection + routing ────────────────────────────────────────────────
+
+// Probe the native host once. If it answers, the engine is installed and we use
+// it automatically (save anywhere + future video/gigapixel); otherwise we fall
+// back to the built-in chrome.downloads path. No manual toggle needed.
+function pingHost() {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    let port;
+    try {
+      port = chrome.runtime.connectNative(HOST_NAME);
+    } catch {
+      return finish(false);
+    }
+    const timer = setTimeout(() => { try { port.disconnect(); } catch {} finish(false); }, 2500);
+    port.onMessage.addListener((m) => { clearTimeout(timer); try { port.disconnect(); } catch {} finish(!!(m && m.ok)); });
+    port.onDisconnect.addListener(() => { clearTimeout(timer); finish(false); });
+    try { port.postMessage({ ping: true }); } catch { clearTimeout(timer); finish(false); }
+  });
+}
+
+async function handleGrab(urls, referer, folder) {
+  // Prefer the engine when the helper is installed; otherwise built-in download.
+  const hasHost = await pingHost();
+  return hasHost
+    ? handleGrabHost(urls, referer, folder)
+    : handleGrabBuiltin(urls, referer, folder);
+}
 
 // ── Built-in downloader (chrome.downloads — no native host) ───────────────────
 

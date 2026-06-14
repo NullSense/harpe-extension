@@ -18,7 +18,7 @@ let selected = new Set(); // Set<url string>
 let tabId = null;
 let grabInProgress = false;
 let saveDest = ""; // chosen save folder
-let useEngine = false; // false = built-in chrome.downloads; true = native host
+let engineAvailable = false; // true once the native helper answers a ping
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -44,20 +44,29 @@ const $settings = document.getElementById("settings");
 const $dest = document.getElementById("dest");
 const $destLabel = document.getElementById("dest-label");
 const $settingsHelp = document.getElementById("settings-help");
-const $useEngine = document.getElementById("use-engine");
+const $modeLine = document.getElementById("mode-line");
 const $btnSaveSettings = document.getElementById("btn-save-settings");
 const $settingsStatus = document.getElementById("settings-status");
 
-// ── Settings (save folder + download mode) ─────────────────────────────────────
+// ── Settings (save folder; mode is auto-detected) ──────────────────────────────
 
+// The extension uses the Harpe engine automatically when the local helper is
+// installed (save anywhere + video/gigapixel); otherwise it downloads in-browser
+// to your Downloads folder. No toggle — it just uses the best available.
 function applyMode() {
-  if (useEngine) {
+  if (engineAvailable) {
+    $modeLine.textContent = "✓ Harpe engine connected — full power";
+    $modeLine.className = "mode-line ok";
     $destLabel.textContent = "Save to (absolute folder)";
     $dest.placeholder = "~/Pictures/harpe  (blank = engine default)";
     $settingsHelp.innerHTML =
-      "Downloads via the local Harpe engine to any folder " +
-      "(<code>~</code> and <code>$VARS</code> allowed). Also enables video &amp; gigapixel.";
+      "The local engine is installed: saves to any folder " +
+      "(<code>~</code> and <code>$VARS</code> allowed), plus video &amp; gigapixel.";
   } else {
+    $modeLine.innerHTML =
+      "Built-in mode — images only, to Downloads. " +
+      "<a id='helper-link' href='https://github.com/NullSense/harpe-extension#installation' target='_blank' rel='noopener'>Install the engine</a> for save-anywhere + video.";
+    $modeLine.className = "mode-line";
     $destLabel.textContent = "Save to (subfolder of Downloads)";
     $dest.placeholder = "harpe  (organised by site)";
     $settingsHelp.innerHTML =
@@ -65,25 +74,33 @@ function applyMode() {
   }
 }
 
-async function loadSettings() {
+async function detectEngine() {
   try {
-    const { dest, useEngine: ue } = await chrome.storage.local.get(["dest", "useEngine"]);
-    saveDest = typeof dest === "string" ? dest : "";
-    useEngine = Boolean(ue);
-    $dest.value = saveDest;
-    $useEngine.checked = useEngine;
+    const r = await chrome.runtime.sendMessage({ type: "HARPE_PING" });
+    engineAvailable = Boolean(r && r.available);
   } catch {
-    saveDest = ""; useEngine = false;
+    engineAvailable = false;
   }
   applyMode();
 }
 
+async function loadSettings() {
+  try {
+    const { dest } = await chrome.storage.local.get("dest");
+    saveDest = typeof dest === "string" ? dest : "";
+    $dest.value = saveDest;
+  } catch {
+    saveDest = "";
+  }
+  applyMode();
+  detectEngine(); // async — refreshes the mode line when the probe returns
+}
+
 async function saveSettings() {
   saveDest = $dest.value.trim();
-  useEngine = $useEngine.checked;
   try {
-    await chrome.storage.local.set({ dest: saveDest, useEngine });
-    $settingsStatus.textContent = useEngine
+    await chrome.storage.local.set({ dest: saveDest });
+    $settingsStatus.textContent = engineAvailable
       ? (saveDest ? `Engine → ${saveDest}` : "Engine → default folders")
       : (saveDest ? `Downloads/${saveDest}/<site>/` : "Downloads/harpe/<site>/");
     $settingsStatus.hidden = false;
@@ -273,7 +290,6 @@ async function doGrab() {
       type: "HARPE_GRAB",
       urls,
       referer: scanResult.pageUrl,
-      useEngine,
       folder: saveDest,
     });
 
@@ -334,7 +350,6 @@ $btnGrab.addEventListener("click", doGrab);
 $btnRescan.addEventListener("click", doScan);
 $btnSettings.addEventListener("click", toggleSettings);
 $btnSaveSettings.addEventListener("click", saveSettings);
-$useEngine.addEventListener("change", () => { useEngine = $useEngine.checked; applyMode(); });
 $dest.addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
 
 function init() {

@@ -7,8 +7,16 @@ A Manifest V3 browser extension that scans the **rendered DOM** of the current t
 extension itself. Files land in `Downloads/harpe/<site>/`.
 
 The optional **Harpe engine** (a small local helper) unlocks saving to *any*
-folder, plus video and gigapixel/IIIF downloads. Turn it on in the extension's
-⚙ settings; everything below describes that advanced path.
+folder, plus video and gigapixel/IIIF downloads. It's **auto-detected** — if the
+helper is installed the extension uses it automatically (the ⚙ settings show
+"engine connected"); if not, it stays in built-in mode. No toggle. Everything
+below describes installing that optional helper.
+
+> Why a helper at all? A browser extension is sandboxed: it physically cannot
+> save outside the Downloads folder or run external programs (yt-dlp for video,
+> dezoomify for gigapixel). Every tool of this kind (1Password, KeePassXC, video
+> downloaders) ships a small local helper for exactly this reason. Image
+> grabbing needs no helper; only those two extras do.
 
 ## Architecture
 
