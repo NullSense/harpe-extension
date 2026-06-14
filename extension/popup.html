@@ -22,7 +22,7 @@
 
   <!-- Settings drawer (toggled by the gear) -->
   <section id="settings" class="settings" hidden>
-    <label class="settings-label" for="dest">Save images to</label>
+    <label class="settings-label" for="dest" id="dest-label">Save to (subfolder of Downloads)</label>
     <div class="settings-row">
       <input
         id="dest"
@@ -30,14 +30,17 @@
         type="text"
         spellcheck="false"
         autocomplete="off"
-        placeholder="~/Pictures/harpe  (default — organised by site)"
+        placeholder="harpe  (organised by site)"
       />
       <button id="btn-save-settings" class="btn-primary">Save</button>
     </div>
-    <p class="settings-help">
-      An absolute folder on this computer (<code>~</code> and <code>$VARS</code> allowed).
-      Leave blank for Harpe's defaults — images go to
-      <code>~/Pictures/harpe</code>, grouped by the site they came from.
+    <label class="settings-check">
+      <input type="checkbox" id="use-engine" />
+      <span>Use the Harpe engine — save anywhere, plus video &amp; gigapixel
+        (needs the <a id="helper-link" href="https://github.com/NullSense/harpe-extension#installation" target="_blank" rel="noopener">helper</a>)</span>
+    </label>
+    <p class="settings-help" id="settings-help">
+      Images download to your <code>Downloads</code> folder, grouped by site. No setup needed.
     </p>
     <p id="settings-status" class="settings-status" hidden></p>
   </section>

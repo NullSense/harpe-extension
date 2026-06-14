@@ -1,6 +1,14 @@
 # Harpe Browser Extension
 
-A Manifest V3 browser extension that scans the **rendered DOM** of the current tab for images (including JS-injected and lazy-loaded ones, using your authenticated browser session), lets you pick images in a visual grid, and hands the chosen URLs to the locally-installed **harpe** download engine.
+A Manifest V3 browser extension that scans the **rendered DOM** of the current tab for images (including JS-injected and lazy-loaded ones, using your authenticated browser session), lets you pick images in a visual grid, and downloads them.
+
+**It works with zero setup.** By default downloads happen in-browser via the
+`chrome.downloads` API — no Python, no native host, nothing to install beyond the
+extension itself. Files land in `Downloads/harpe/<site>/`.
+
+The optional **Harpe engine** (a small local helper) unlocks saving to *any*
+folder, plus video and gigapixel/IIIF downloads. Turn it on in the extension's
+⚙ settings; everything below describes that advanced path.
 
 ## Architecture
 
@@ -64,9 +72,16 @@ No build step required — the extension is plain vanilla JS (ES2020).
 
 ## Installation
 
-Harpe has a **stable extension ID** baked into `manifest.json` (via the `"key"`
-field), so the native host only has to be registered once — no per-load ID
-juggling.
+### Just the extension (no setup)
+
+Load `extension/` (see Step 3 below) or install from the store. Done — grabbing
+images works immediately, saving to `Downloads/harpe/<site>/`.
+
+### Optional: the Harpe engine (save anywhere, video, gigapixel)
+
+Only needed if you tick **"Use the Harpe engine"** in settings. Harpe has a
+**stable extension ID** baked into `manifest.json` (via the `"key"` field), so
+the native host only has to be registered once — no per-load ID juggling.
 
 - Chromium ID: `ginhcamellmffiamggkiaemdklcnechf`
 - Firefox ID:  `harpe@nullsense.com`

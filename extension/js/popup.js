@@ -17,7 +17,8 @@ let scanResult = null; // { images, pageUrl, pageTitle }
 let selected = new Set(); // Set<url string>
 let tabId = null;
 let grabInProgress = false;
-let saveDest = ""; // chosen save folder ("" = harpe default)
+let saveDest = ""; // chosen save folder
+let useEngine = false; // false = built-in chrome.downloads; true = native host
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -41,28 +42,50 @@ function looksLikeHostError(msg) {
 const $btnSettings = document.getElementById("btn-settings");
 const $settings = document.getElementById("settings");
 const $dest = document.getElementById("dest");
+const $destLabel = document.getElementById("dest-label");
+const $settingsHelp = document.getElementById("settings-help");
+const $useEngine = document.getElementById("use-engine");
 const $btnSaveSettings = document.getElementById("btn-save-settings");
 const $settingsStatus = document.getElementById("settings-status");
 
-// ── Settings (save folder) ────────────────────────────────────────────────────
+// ── Settings (save folder + download mode) ─────────────────────────────────────
+
+function applyMode() {
+  if (useEngine) {
+    $destLabel.textContent = "Save to (absolute folder)";
+    $dest.placeholder = "~/Pictures/harpe  (blank = engine default)";
+    $settingsHelp.innerHTML =
+      "Downloads via the local Harpe engine to any folder " +
+      "(<code>~</code> and <code>$VARS</code> allowed). Also enables video &amp; gigapixel.";
+  } else {
+    $destLabel.textContent = "Save to (subfolder of Downloads)";
+    $dest.placeholder = "harpe  (organised by site)";
+    $settingsHelp.innerHTML =
+      "Images download to your <code>Downloads</code> folder, grouped by site. No setup needed.";
+  }
+}
 
 async function loadSettings() {
   try {
-    const { dest } = await chrome.storage.local.get("dest");
+    const { dest, useEngine: ue } = await chrome.storage.local.get(["dest", "useEngine"]);
     saveDest = typeof dest === "string" ? dest : "";
+    useEngine = Boolean(ue);
     $dest.value = saveDest;
+    $useEngine.checked = useEngine;
   } catch {
-    saveDest = "";
+    saveDest = ""; useEngine = false;
   }
+  applyMode();
 }
 
 async function saveSettings() {
   saveDest = $dest.value.trim();
+  useEngine = $useEngine.checked;
   try {
-    await chrome.storage.local.set({ dest: saveDest });
-    $settingsStatus.textContent = saveDest
-      ? `Saving to: ${saveDest}`
-      : "Using Harpe's default folders.";
+    await chrome.storage.local.set({ dest: saveDest, useEngine });
+    $settingsStatus.textContent = useEngine
+      ? (saveDest ? `Engine → ${saveDest}` : "Engine → default folders")
+      : (saveDest ? `Downloads/${saveDest}/<site>/` : "Downloads/harpe/<site>/");
     $settingsStatus.hidden = false;
     setTimeout(() => { $settingsStatus.hidden = true; }, 2600);
   } catch (e) {
@@ -250,7 +273,8 @@ async function doGrab() {
       type: "HARPE_GRAB",
       urls,
       referer: scanResult.pageUrl,
-      dest: saveDest,
+      useEngine,
+      folder: saveDest,
     });
 
     if (!result) throw new Error("No response from background");
@@ -310,6 +334,7 @@ $btnGrab.addEventListener("click", doGrab);
 $btnRescan.addEventListener("click", doScan);
 $btnSettings.addEventListener("click", toggleSettings);
 $btnSaveSettings.addEventListener("click", saveSettings);
+$useEngine.addEventListener("change", () => { useEngine = $useEngine.checked; applyMode(); });
 $dest.addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
 
 function init() {

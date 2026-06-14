@@ -55,7 +55,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "HARPE_GRAB") {
-    handleGrab(msg.urls, msg.referer, msg.dest).then(sendResponse).catch((err) =>
+    // Default: download in-browser via chrome.downloads (no helper needed).
+    // Opt-in: route through the native host (save anywhere / engine features).
+    const run = msg.useEngine
+      ? handleGrabHost(msg.urls, msg.referer, msg.folder)
+      : handleGrabBuiltin(msg.urls, msg.referer, msg.folder);
+    run.then(sendResponse).catch((err) =>
       sendResponse({ ok: false, error: String(err) })
     );
     return true;
@@ -63,6 +68,60 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   return false;
 });
+
+// ── Built-in downloader (chrome.downloads — no native host) ───────────────────
+
+function safeFilename(url) {
+  try {
+    const u = new URL(url);
+    let base = decodeURIComponent((u.pathname.split("/").pop() || "").split("?")[0]);
+    base = base.replace(/[^\w.\- ]+/g, "_").slice(0, 100);
+    if (!/\.[a-z0-9]{2,5}$/i.test(base)) base += ".jpg";
+    return base || "image.jpg";
+  } catch {
+    return "image.jpg";
+  }
+}
+
+// Build a Downloads-relative subfolder: "<folder>/<site>" (no absolute paths,
+// no traversal — chrome.downloads rejects those).
+function buildSubfolder(folder, referer) {
+  let f = (folder || "harpe").trim()
+    .replace(/^[/\\]+/, "")
+    .replace(/\.\.+/g, "")
+    .replace(/[<>:"|?*]+/g, "_");
+  try {
+    const host = new URL(referer).hostname.replace(/^www\./, "");
+    if (host) f += "/" + host;
+  } catch { /* no referer */ }
+  return f.replace(/\/+/g, "/").replace(/[/\\]+$/, "");
+}
+
+function downloadOne(url, filename) {
+  return new Promise((resolve) => {
+    try {
+      chrome.downloads.download({ url, filename, conflictAction: "uniquify" }, (id) => {
+        if (chrome.runtime.lastError || id === undefined) {
+          resolve({ url, ok: false, error: chrome.runtime.lastError?.message || "download failed" });
+        } else {
+          resolve({ url, ok: true, path: filename });
+        }
+      });
+    } catch (e) {
+      resolve({ url, ok: false, error: String(e?.message || e) });
+    }
+  });
+}
+
+async function handleGrabBuiltin(urls, referer, folder) {
+  const sub = buildSubfolder(folder, referer);
+  const results = [];
+  for (const url of urls) {
+    results.push(await downloadOne(url, sub ? `${sub}/${safeFilename(url)}` : safeFilename(url)));
+  }
+  notifyDone(results);
+  return { ok: results.every((r) => r.ok), results };
+}
 
 // ── Scan ─────────────────────────────────────────────────────────────────────
 
@@ -91,7 +150,7 @@ async function handleScan(tabId) {
 
 // ── Grab ─────────────────────────────────────────────────────────────────────
 
-async function handleGrab(urls, referer, dest) {
+async function handleGrabHost(urls, referer, dest) {
   return new Promise((resolve) => {
     let port;
     let responded = false;
