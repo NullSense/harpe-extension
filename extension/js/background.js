@@ -11,7 +11,7 @@
  * Native messaging host name: "com.nullsense.harpe"
  * Protocol: Chrome native messaging (4-byte LE length prefix), JSON messages.
  *
- * Outgoing to host: { urls: string[], referer: string }
+ * Outgoing to host: { urls: string[], referer: string, dest?: string }
  * Incoming from host: { results: [{url, ok, path?, error?}, ...] }
  */
 
@@ -55,7 +55,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "HARPE_GRAB") {
-    handleGrab(msg.urls, msg.referer).then(sendResponse).catch((err) =>
+    handleGrab(msg.urls, msg.referer, msg.dest).then(sendResponse).catch((err) =>
       sendResponse({ ok: false, error: String(err) })
     );
     return true;
@@ -91,7 +91,7 @@ async function handleScan(tabId) {
 
 // ── Grab ─────────────────────────────────────────────────────────────────────
 
-async function handleGrab(urls, referer) {
+async function handleGrab(urls, referer, dest) {
   return new Promise((resolve) => {
     let port;
     let responded = false;
@@ -139,8 +139,9 @@ async function handleGrab(urls, referer) {
       }
     });
 
-    // Send the request — Chrome auto-frames with the 4-byte length prefix
-    port.postMessage({ urls, referer });
+    // Send the request — Chrome auto-frames with the 4-byte length prefix.
+    // `dest` is optional (blank = harpe's default media folders).
+    port.postMessage({ urls, referer, dest: dest || "" });
   });
 }
 

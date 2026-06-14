@@ -145,6 +145,24 @@ Chrome generates the extension ID from the public key in the extension package. 
 
 - **Development shortcut:** Run `install.sh` after each load with the new ID. It's a one-liner.
 
+## Where files are saved
+
+By default Harpe sorts downloads by media type into per-site subfolders:
+
+| Media  | Default folder | macOS |
+|--------|----------------|-------|
+| Images | `~/Pictures/harpe/<site>/` | same |
+| Video  | `~/Videos/harpe/` | `~/Movies/harpe/` |
+| Audio  | `~/Music/harpe/` | same |
+
+The extension downloads images, so they land in `~/Pictures/harpe/<site>/`.
+
+To change it, click the **⚙ gear** in the popup and set **Save images to** an
+absolute path (e.g. `~/Downloads/art` or `$HOME/refs`). `~` and `$VARS` are
+expanded by the native host. Leave it blank to use the defaults above. The
+choice is stored with `chrome.storage` and sent to the host as `dest`, which
+passes it to `harpe --dest`.
+
 ## Content-script scanning details
 
 The content script runs in the page's own context (`document_idle`), so it sees the fully rendered DOM including JS-injected and lazy-loaded images. It scans:

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Harpe",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Scan the live DOM for images, pick what you want, and grab them via the local Harpe engine.",
   "permissions": [
     "activeTab",

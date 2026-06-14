@@ -99,15 +99,17 @@ def find_harpe() -> str:
     )
 
 
-def run_harpe(urls: list[str], referer: str) -> list[dict]:
+def run_harpe(urls: list[str], referer: str, dest: str | None = None) -> list[dict]:
     """
-    Invoke `harpe -F - --json --referer <referer>`, pipe urls on stdin,
-    return parsed JSON array.
+    Invoke `harpe -F - --json --referer <referer> [--dest <dest>]`, pipe urls on
+    stdin, return parsed JSON array.
     """
     harpe_bin = find_harpe()
     url_payload = "\n".join(urls) + "\n"
 
     cmd = [harpe_bin, "-F", "-", "--json", "--referer", referer]
+    if dest:
+        cmd += ["--dest", dest]
     log.info("running: %s (urls=%d)", " ".join(cmd), len(urls))
 
     result = subprocess.run(
@@ -189,6 +191,13 @@ def main() -> None:
         urls = msg.get("urls", [])
         referer = msg.get("referer", "")
 
+        # Optional save folder chosen in the extension settings. Expand ~ and
+        # env vars; an empty/blank value means "let harpe use its default".
+        dest_raw = msg.get("dest", "")
+        dest = None
+        if isinstance(dest_raw, str) and dest_raw.strip():
+            dest = os.path.expanduser(os.path.expandvars(dest_raw.strip()))
+
         if not isinstance(urls, list) or not urls:
             write_message(stdout, {"results": [], "error": "no urls provided"})
             continue
@@ -200,7 +209,7 @@ def main() -> None:
             continue
 
         try:
-            results = run_harpe(urls, referer)
+            results = run_harpe(urls, referer, dest)
             write_message(stdout, {"results": results})
         except FileNotFoundError as exc:
             log.error("%s", exc)

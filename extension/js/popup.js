@@ -17,6 +17,7 @@ let scanResult = null; // { images, pageUrl, pageTitle }
 let selected = new Set(); // Set<url string>
 let tabId = null;
 let grabInProgress = false;
+let saveDest = ""; // chosen save folder ("" = harpe default)
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,44 @@ const $btnGrab = document.getElementById("btn-grab");
 const $btnRescan = document.getElementById("btn-rescan");
 const $pageTitle = document.getElementById("page-title");
 const $count = document.getElementById("count");
+const $btnSettings = document.getElementById("btn-settings");
+const $settings = document.getElementById("settings");
+const $dest = document.getElementById("dest");
+const $btnSaveSettings = document.getElementById("btn-save-settings");
+const $settingsStatus = document.getElementById("settings-status");
+
+// ── Settings (save folder) ────────────────────────────────────────────────────
+
+async function loadSettings() {
+  try {
+    const { dest } = await chrome.storage.local.get("dest");
+    saveDest = typeof dest === "string" ? dest : "";
+    $dest.value = saveDest;
+  } catch {
+    saveDest = "";
+  }
+}
+
+async function saveSettings() {
+  saveDest = $dest.value.trim();
+  try {
+    await chrome.storage.local.set({ dest: saveDest });
+    $settingsStatus.textContent = saveDest
+      ? `Saving to: ${saveDest}`
+      : "Using Harpe's default folders.";
+    $settingsStatus.hidden = false;
+    setTimeout(() => { $settingsStatus.hidden = true; }, 2600);
+  } catch (e) {
+    $settingsStatus.textContent = "Could not save: " + e.message;
+    $settingsStatus.hidden = false;
+  }
+}
+
+function toggleSettings() {
+  const open = $settings.hidden;
+  $settings.hidden = !open;
+  $btnSettings.setAttribute("aria-expanded", String(open));
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -201,6 +240,7 @@ async function doGrab() {
       type: "HARPE_GRAB",
       urls,
       referer: scanResult.pageUrl,
+      dest: saveDest,
     });
 
     if (!result) throw new Error("No response from background");
@@ -249,7 +289,15 @@ $btnSelectAll.addEventListener("click", selectAll);
 $btnClear.addEventListener("click", clearAll);
 $btnGrab.addEventListener("click", doGrab);
 $btnRescan.addEventListener("click", doScan);
+$btnSettings.addEventListener("click", toggleSettings);
+$btnSaveSettings.addEventListener("click", saveSettings);
+$dest.addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
 
-document.addEventListener("DOMContentLoaded", doScan);
+function init() {
+  loadSettings();
+  doScan();
+}
+
+document.addEventListener("DOMContentLoaded", init);
 // DOMContentLoaded may have already fired (side panel loads synchronously)
-if (document.readyState !== "loading") doScan();
+if (document.readyState !== "loading") init();
