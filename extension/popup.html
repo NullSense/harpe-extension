@@ -48,6 +48,12 @@
 
   <div id="status" class="status scanning">Initialising…</div>
 
+  <!-- Where the last grab landed + reveal-in-file-manager -->
+  <div id="saved-bar" class="saved-bar" hidden>
+    <span id="saved-text" class="saved-text" title=""></span>
+    <button id="btn-open-folder" class="btn-secondary">Open folder</button>
+  </div>
+
   <!-- Shown when the native helper isn't installed/reachable -->
   <div id="host-hint" class="host-hint" hidden>
     <p class="host-hint-title">Native helper not set up</p>

@@ -25,6 +25,7 @@ import sys
 import shutil
 import os
 import logging
+from pathlib import Path
 
 # ── Logging (to stderr so it doesn't corrupt the stdout protocol) ────────────
 
@@ -97,6 +98,19 @@ def find_harpe() -> str:
         "harpe binary not found. Install it with: uv tool install harpe, "
         "or set HARPE_BIN to its absolute path."
     )
+
+
+def open_in_file_manager(target: str) -> None:
+    """Reveal a saved file (or folder) in the OS file manager."""
+    p = Path(os.path.expanduser(os.path.expandvars(target)))
+    folder = p if p.is_dir() else p.parent
+    if sys.platform == "darwin":
+        cmd = ["open", str(folder)]
+    elif os.name == "nt":
+        cmd = ["explorer", str(folder)]
+    else:
+        cmd = ["xdg-open", str(folder)]
+    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def run_harpe(urls: list[str], referer: str, dest: str | None = None) -> list[dict]:
@@ -192,6 +206,17 @@ def main() -> None:
         # installed and silently upgrade to engine features (no manual toggle).
         if msg.get("ping"):
             write_message(stdout, {"ok": True, "pong": True})
+            continue
+
+        # Reveal a saved file/folder in the OS file manager (engine path — the
+        # extension can't open arbitrary OS folders itself).
+        if msg.get("open"):
+            try:
+                open_in_file_manager(str(msg["open"]))
+                write_message(stdout, {"ok": True})
+            except Exception as exc:
+                log.error("open failed: %s", exc)
+                write_message(stdout, {"ok": False, "error": str(exc)})
             continue
 
         urls = msg.get("urls", [])

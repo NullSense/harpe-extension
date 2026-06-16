@@ -66,8 +66,45 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // Reveal a saved file in its folder. Engine downloads go through the native
+  // host (it can open any OS folder); built-in downloads use chrome.downloads.
+  if (msg.type === "HARPE_OPEN") {
+    openInHost(msg.path).then(sendResponse).catch((err) =>
+      sendResponse({ ok: false, error: String(err) })
+    );
+    return true;
+  }
+  if (msg.type === "HARPE_OPEN_DOWNLOAD") {
+    try {
+      chrome.downloads.show(msg.id);
+      sendResponse({ ok: true });
+    } catch (e) {
+      try { chrome.downloads.showDefaultFolder(); sendResponse({ ok: true }); }
+      catch (e2) { sendResponse({ ok: false, error: String(e2) }); }
+    }
+    return false;
+  }
+
   return false;
 });
+
+// Ask the native host to reveal a saved path in the OS file manager.
+function openInHost(path) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    let port;
+    try {
+      port = chrome.runtime.connectNative(HOST_NAME);
+    } catch (e) {
+      return finish({ ok: false, error: String(e) });
+    }
+    const timer = setTimeout(() => { try { port.disconnect(); } catch {} finish({ ok: true }); }, 2500);
+    port.onMessage.addListener((m) => { clearTimeout(timer); try { port.disconnect(); } catch {} finish(m || { ok: true }); });
+    port.onDisconnect.addListener(() => { clearTimeout(timer); finish({ ok: false, error: "host disconnected" }); });
+    try { port.postMessage({ open: path }); } catch (e) { clearTimeout(timer); finish({ ok: false, error: String(e) }); }
+  });
+}
 
 // ── Helper detection + routing ────────────────────────────────────────────────
 
@@ -134,7 +171,7 @@ function downloadOne(url, filename) {
         if (chrome.runtime.lastError || id === undefined) {
           resolve({ url, ok: false, error: chrome.runtime.lastError?.message || "download failed" });
         } else {
-          resolve({ url, ok: true, path: filename });
+          resolve({ url, ok: true, path: filename, id });
         }
       });
     } catch (e) {
@@ -274,20 +311,29 @@ function notifyDone(results) {
   const ok = results.filter((r) => r.ok).length;
   const fail = results.length - ok;
 
-  let title = "Harpe";
+  // Surface the folder the files landed in (engine returns absolute paths).
+  const firstPath = results.find((r) => r.ok && r.path)?.path;
+  const folder = firstPath ? dirOf(firstPath) : "";
+
   let message;
   if (fail === 0) {
-    message = `Downloaded ${ok} image${ok !== 1 ? "s" : ""} successfully.`;
+    message = `Downloaded ${ok} file${ok !== 1 ? "s" : ""}` + (folder ? ` → ${folder}` : ".");
   } else if (ok === 0) {
-    message = `All ${fail} downloads failed.`;
+    message = `All ${fail} download${fail !== 1 ? "s" : ""} failed.`;
   } else {
-    message = `${ok} downloaded, ${fail} failed.`;
+    message = `${ok} downloaded, ${fail} failed` + (folder ? ` → ${folder}` : ".");
   }
 
   chrome.notifications.create({
     type: "basic",
     iconUrl: "icons/icon48.png",
-    title,
+    title: "Harpe",
     message,
   });
+}
+
+// Folder portion of a saved path (handles both / and \ separators).
+function dirOf(p) {
+  const i = Math.max(String(p).lastIndexOf("/"), String(p).lastIndexOf("\\"));
+  return i > 0 ? String(p).slice(0, i) : String(p);
 }

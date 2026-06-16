@@ -416,3 +416,19 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   font: 600 10px/1.4 ui-monospace, monospace; letter-spacing: 0.02em;
   pointer-events: none;
 }
+
+/* "saved to … / open folder" bar after a grab */
+.saved-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 4px 12px 0; padding: 7px 10px;
+  background: var(--surface, rgba(255,255,255,0.03));
+  border: 1px solid var(--border, rgba(255,255,255,0.08));
+  border-radius: 8px;
+}
+.saved-text {
+  flex: 1; min-width: 0;
+  font: 11px/1.4 ui-monospace, monospace; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  direction: rtl; text-align: left; /* ellipsize the *start* so the filename stays visible */
+}
+.saved-bar .btn-secondary { flex: none; }

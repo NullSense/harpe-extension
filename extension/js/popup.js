@@ -31,6 +31,55 @@ const $btnRescan = document.getElementById("btn-rescan");
 const $pageTitle = document.getElementById("page-title");
 const $count = document.getElementById("count");
 const $hostHint = document.getElementById("host-hint");
+const $savedBar = document.getElementById("saved-bar");
+const $savedText = document.getElementById("saved-text");
+const $btnOpenFolder = document.getElementById("btn-open-folder");
+
+// Remembers where the last grab landed so "Open folder" knows what to reveal.
+// Engine downloads carry an absolute path; built-in downloads carry a chrome
+// download id (chrome.downloads.show needs the id, not the path).
+let lastSaved = null; // { path } | { downloadId }
+
+function dirOf(p) {
+  const i = Math.max(String(p).lastIndexOf("/"), String(p).lastIndexOf("\\"));
+  return i > 0 ? String(p).slice(0, i) : String(p);
+}
+
+function showSaved(results) {
+  $savedBar.hidden = true;
+  lastSaved = null;
+  const ok = (results || []).filter((r) => r.ok && (r.path || r.id !== undefined));
+  if (!ok.length) return;
+  const first = ok[0];
+  if (typeof first.path === "string" && first.path.startsWith("/")) {
+    // Engine: absolute path → show its folder.
+    const dir = dirOf(first.path);
+    lastSaved = { path: first.path };
+    $savedText.textContent = "Saved to " + dir;
+    $savedText.title = dir;
+  } else if (first.id !== undefined) {
+    // Built-in: relative path under Downloads.
+    lastSaved = { downloadId: first.id };
+    $savedText.textContent = "Saved to Downloads/" + dirOf(first.path || "");
+    $savedText.title = first.path || "";
+  } else {
+    return;
+  }
+  $savedBar.hidden = false;
+}
+
+async function openSavedFolder() {
+  if (!lastSaved) return;
+  $btnOpenFolder.disabled = true;
+  try {
+    if (lastSaved.path) {
+      await chrome.runtime.sendMessage({ type: "HARPE_OPEN", path: lastSaved.path });
+    } else if (lastSaved.downloadId !== undefined) {
+      await chrome.runtime.sendMessage({ type: "HARPE_OPEN_DOWNLOAD", id: lastSaved.downloadId });
+    }
+  } catch { /* best-effort */ }
+  finally { $btnOpenFolder.disabled = false; }
+}
 
 // A grab error means the native helper is missing/unreachable when the message
 // mentions the host or the connection (vs. a normal per-image download failure).
@@ -238,6 +287,7 @@ function clearAll() {
 async function doScan() {
   selected.clear();
   $grid.innerHTML = "";
+  $savedBar.hidden = true;
   setStatus("Scanning page…", "scanning");
   $btnRescan.disabled = true;
   $btnGrab.disabled = true;
@@ -285,7 +335,8 @@ async function doGrab() {
   grabInProgress = true;
   $btnGrab.disabled = true;
   $hostHint.hidden = true;
-  setStatus(`Downloading ${selected.size} image(s)…`, "scanning");
+  $savedBar.hidden = true;
+  setStatus(`Downloading ${selected.size} item(s)…`, "scanning");
 
   // Grey-out non-selected cards
   for (const card of $grid.querySelectorAll(".card")) {
@@ -328,12 +379,13 @@ async function doGrab() {
     const ok = result.results?.filter((r) => r.ok).length ?? 0;
     const fail = (result.results?.length ?? 0) - ok;
     if (fail === 0) {
-      setStatus(`Downloaded ${ok} image${ok !== 1 ? "s" : ""}.`, "ok");
+      setStatus(`Downloaded ${ok} file${ok !== 1 ? "s" : ""}.`, "ok");
     } else if (ok === 0) {
-      setStatus(`All ${fail} downloads failed.`, "error");
+      setStatus(`All ${fail} download${fail !== 1 ? "s" : ""} failed.`, "error");
     } else {
       setStatus(`${ok} downloaded, ${fail} failed.`, "warn");
     }
+    showSaved(result.results);
   } catch (err) {
     setStatus("Grab failed: " + err.message, "error");
     if (looksLikeHostError(err.message)) $hostHint.hidden = false;
@@ -358,6 +410,7 @@ $btnGrab.addEventListener("click", doGrab);
 $btnRescan.addEventListener("click", doScan);
 $btnSettings.addEventListener("click", toggleSettings);
 $btnSaveSettings.addEventListener("click", saveSettings);
+$btnOpenFolder.addEventListener("click", openSavedFolder);
 $dest.addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
 
 function init() {
