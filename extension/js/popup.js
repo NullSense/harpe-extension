@@ -280,6 +280,7 @@ async function saveSettings() {
       destImg: settings.img, destVid: settings.vid,
       destAud: settings.aud, destSub: settings.sub, destGroup: settings.group,
     });
+    chrome.storage.local.remove("dest").catch(() => {}); // drop the migrated legacy key
     if (engineAvailable) {
       $settingsStatus.textContent =
         `img → ${settings.img || engineDefaults.image} · ` +
@@ -585,7 +586,10 @@ for (const b of $browseButtons) {
   b.addEventListener("click", () => browseFor(b.dataset.for));
 }
 
+let inited = false;
 function init() {
+  if (inited) return; // guard: both the listener and the readyState check can fire
+  inited = true;
   loadSettings();
   doScan();
 }

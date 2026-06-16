@@ -26,7 +26,7 @@ const HOST_NAME = "com.nullsense.harpe";
 // Anything else → a popup window. All API access is guarded so the same bundle
 // loads on a browser that lacks any one of them.
 
-if (chrome.action?.onClicked) {
+if (typeof chrome !== "undefined" && chrome.action?.onClicked) {
   chrome.action.onClicked.addListener(async (tab) => {
     if (chrome.sidebarAction?.toggle) {
       try { await chrome.sidebarAction.toggle(); return; } catch {}
@@ -40,11 +40,13 @@ if (chrome.action?.onClicked) {
 }
 
 // Chrome: clicking the toolbar icon opens the side panel directly.
-chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
+if (typeof chrome !== "undefined") {
+  chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
+}
 
 // ── Message routing ──────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+if (typeof chrome !== "undefined") chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "HARPE_SCAN_REQUEST") {
     handleScan(msg.tabId).then(sendResponse).catch((err) =>
       sendResponse({ ok: false, error: String(err) })
@@ -130,7 +132,7 @@ async function hostRoundtrip(payload, timeoutMs = 8000) {
     port.onMessage.addListener((m) => { clearTimeout(timer); finish(m || { ok: false, error: "empty reply" }); });
     port.onDisconnect.addListener(() => {
       clearTimeout(timer);
-      if (!done) resolve({ ok: false, error: chrome.runtime.lastError?.message || "host disconnected" });
+      finish({ ok: false, error: chrome.runtime.lastError?.message || "host disconnected" });
     });
     try { port.postMessage(payload); } catch (e) { clearTimeout(timer); finish({ ok: false, error: String(e) }); }
   });
@@ -156,13 +158,14 @@ function pingHost() {
 }
 
 async function handleGrab(urls, referer, cfg) {
-  // Prefer the engine when the helper is reachable; otherwise built-in download.
-  // Tag the response with which path ran so the popup can correct its mode if a
-  // startup ping had wrongly concluded the engine was unavailable.
-  const m = await pingHost();
-  if (m && m.ok) {
+  // Try the engine directly when the permission is granted — a results array means
+  // the host handled it (even if some files failed). No separate ping first: that
+  // spawned a second cold-start host per grab. A connection failure (no results
+  // array) falls through to the built-in downloader. `engine` tags which ran so
+  // the popup can correct its mode.
+  if (await hasNativePerm()) {
     const r = await handleGrabHost(urls, referer, cfg);
-    return { ...r, engine: true };
+    if (Array.isArray(r.results)) return { ...r, engine: true };
   }
   const r = await handleGrabBuiltin(urls, referer, cfg.folder);
   return { ...r, engine: false };
@@ -337,4 +340,11 @@ function notifyDone(results) {
 function dirOf(p) {
   const i = Math.max(String(p).lastIndexOf("/"), String(p).lastIndexOf("\\"));
   return i > 0 ? String(p).slice(0, i) : String(p);
+}
+
+// Expose the pure helpers to Node for unit tests (no-op in the browser, where
+// `module` is undefined). The chrome.* registrations above are guarded so this
+// file can be require()'d headlessly.
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { dirOf, safeFilename, buildSubfolder, tweetToken };
 }
