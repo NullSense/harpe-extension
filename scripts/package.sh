@@ -21,26 +21,34 @@ base = json.load(open(os.path.join(src, "manifest.json")))
 ver = base["version"]
 
 
+# The dev manifest (extension/manifest.json) is Chrome-native so "Load unpacked"
+# is warning-free in Chrome. Firefox-only keys are injected into the FF build
+# here (Firefox has no service-worker background and doesn't know side_panel).
+
 def chrome_manifest():
-    # Chrome: native side panel, one toolbar button. No Firefox-only keys.
+    # Chrome: native side panel, one toolbar button. Drop dev/Gecko-only keys.
     m = copy.deepcopy(base)
-    m.pop("key", None)                      # stores assign their own ID
-    m.pop("sidebar_action", None)           # Firefox-only
+    m.pop("key", None)                        # stores assign their own ID
     m.pop("browser_specific_settings", None)  # Gecko-only
-    m["background"].pop("scripts", None)    # Chrome uses the service worker
+    m.pop("sidebar_action", None)             # belt-and-suspenders
+    m["background"].pop("scripts", None)
     return m
 
 
 def firefox_manifest():
-    # Firefox: native sidebar (its own toolbar button), no Chrome-only keys.
+    # Firefox: native sidebar (its own button) + event-page background.
     m = copy.deepcopy(base)
     m.pop("key", None)
-    m.pop("side_panel", None)               # Chrome-only
-    m.pop("action", None)                   # avoid a 2nd, redundant button
-    m.pop("sidePanel", None)
+    m.pop("side_panel", None)                 # Chrome-only
+    m.pop("action", None)                     # avoid a 2nd, redundant button
     if "sidePanel" in m.get("permissions", []):
         m["permissions"] = [p for p in m["permissions"] if p != "sidePanel"]
-    m["background"].pop("service_worker", None)  # Firefox uses scripts
+    m["background"] = {"scripts": ["js/background.js"]}  # no service worker on FF
+    m["sidebar_action"] = {
+        "default_title": "Harpe",
+        "default_panel": "popup.html",
+        "default_icon": {"16": "icons/icon16.png", "32": "icons/icon32.png"},
+    }
     return m
 
 

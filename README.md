@@ -133,8 +133,19 @@ Firefox, LibreWolf, Zen). Useful flags:
 **Developer mode** → **Load unpacked** → pick the `extension/` folder. The ID
 will be `ginhcamellmffiamggkiaemdklcnechf` (from the manifest `key`).
 
-**Firefox / Zen / LibreWolf:** `about:debugging#/runtime/this-firefox` →
-**Load Temporary Add-on…** → pick `extension/manifest.json`. The ID comes from
+The committed `extension/manifest.json` is **Chrome-native** (service-worker
+background, side panel) so this loads warning-free.
+
+**Firefox / Zen / LibreWolf:** Firefox needs its own manifest variant (it has no
+service-worker background and uses a native sidebar instead of the side panel),
+so build it first and load the zip:
+
+```sh
+scripts/package.sh        # → dist/harpe-firefox-<ver>.zip
+```
+
+`about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → pick
+`dist/harpe-firefox-<ver>.zip`. The ID comes from
 `browser_specific_settings.gecko.id`.
 
 ### Step 4 — Verify
@@ -176,26 +187,27 @@ each step a single action:
 2. **Helper** — one command: `host/install.sh` (or `install_host.bat`). The
    popup links here automatically when the helper is missing.
 
-### Building the store package
+### Building the store packages
 
 ```sh
-scripts/package.sh        # → dist/harpe-<version>.zip  (needs only python3)
+scripts/package.sh        # → dist/harpe-chrome-<ver>.zip + dist/harpe-firefox-<ver>.zip
 ```
 
-This zips `extension/` and **strips the dev-only `"key"`** field (the stores
-assign their own ID). The same artifact uploads to **both** Chrome Web Store and
-Firefox AMO — the MV3 manifest is cross-browser:
+The committed `extension/manifest.json` is **Chrome-native** (so "Load unpacked"
+is warning-free in Chrome). `package.sh` produces a **tailored zip per store** —
+a single cross-browser MV3 manifest can't satisfy both (Chrome rejects
+`background.scripts`; Firefox has no service-worker background). Each build:
 
-- `background` declares both `service_worker` (Chrome) and `scripts` (Firefox —
-  it doesn't support service-worker backgrounds), loaded as classic scripts.
-- `side_panel` is Chrome-only; on Firefox the toolbar click falls back to opening
-  the popup as a window (handled in `background.js`). A native Firefox sidebar
-  (`sidebar_action`) is a possible future addition.
-- Firefox requires the `browser_specific_settings.gecko.id` that's already set.
+- **Chrome** — `background.service_worker`, native `side_panel`, one toolbar
+  button. Drops the dev-only `key` and the Gecko-only keys.
+- **Firefox** — `background.scripts` (event page), native `sidebar_action`, the
+  `browser_specific_settings.gecko.id`; drops `side_panel`/`action` so there's a
+  single sidebar button. `background.js` routes the click per browser.
 
-AMO requires the add-on be **signed by Mozilla** (automatic on submit). Both
-stores want a privacy policy — [`PRIVACY.md`](PRIVACY.md) — and a listing
-description justifying `<all_urls>`.
+Both drop the dev-only `"key"` (stores assign their own ID). AMO requires the
+add-on be **signed by Mozilla** (automatic on submit). Both stores want a privacy
+policy — [`PRIVACY.md`](PRIVACY.md) — and a listing description justifying
+`<all_urls>`.
 
 **Python vs Rust?** The host can be *any* executable — a Python script (what we
 use), a shell script, or a compiled Go/Rust binary. A compiled binary is only
