@@ -26,34 +26,31 @@ Browser tab (content script)
   │  returns: [{url, w, h, area}, …]
   ↓
 Background service worker
-  │  receives selected URLs + page URL from popup
+  │  receives selected URLs + page URL + per-type dirs/grouping/metadata from popup
   │  calls chrome.runtime.connectNative("com.nullsense.harpe")
   ↓
-Native messaging host  (host/harpe_host.py)
-  │  speaks 4-byte LE length-prefix + UTF-8 JSON protocol
-  │  runs: harpe -F - --json --referer <page-url>
-  │         stdin = one URL per line
+Native messaging host  (harpe --native-host)
+  │  speaks 4-byte LE length-prefix + UTF-8 JSON protocol, in-process
+  │  {urls, referer, dirs?, items?, group?} | {ping} | {open} | {pick}
   ↓
-harpe engine  (installed via: uv tool install harpe)
-  │  downloads with correct UA/Referer/naming/dedup
-  │  stdout = JSON: [{url, ok, path|error}, …]
+harpe engine  (installed via: uv tool install harpe — registers the host itself)
+  │  downloads with correct UA/Referer, descriptive naming, per-type folders
+  │  reply = JSON: {results:[{url, ok, path|error, kind}]} | {ok, defaults} | {ok, path}
   ↑
 Results flow back up through host → background → popup → UI badge per image
 ```
 
-**Why a native host?** A pure browser extension cannot make arbitrary cross-origin requests with spoofed headers or write files to disk. The native host delegates both concerns to `harpe`, which runs as a trusted local process with full filesystem and network access using the user's desired download settings.
+**Why a native host?** A pure browser extension cannot make arbitrary cross-origin requests with spoofed headers or write files to disk. The host delegates both to `harpe`, which runs as a trusted local process. `harpe` *is* the host (`harpe --native-host`), so there is no separate helper to ship or maintain.
 
 ## Prerequisites
 
-1. **harpe** engine installed:
+1. **harpe** engine installed (it registers itself as the native host):
    ```sh
    uv tool install harpe
    ```
    Verify: `harpe --help`
 
-2. **Python 3.8+** (for the native host — already on most systems)
-
-3. **Chrome 116+** or **Firefox 91+** (for side panel / native messaging)
+2. **Chrome 116+** or **Firefox 121+** (for side panel / sidebar / native messaging)
 
 ## Directory layout
 
@@ -68,13 +65,13 @@ harpe-extension/
 │   │   ├── background.js   ← Service worker (scan relay + native messaging)
 │   │   └── popup.js        ← Side-panel / popup UI
 │   └── icons/
-├── host/
-│   ├── harpe_host.py                    ← Native messaging host (executable)
-│   ├── com.nullsense.harpe.json         ← Chrome host manifest template
-│   ├── com.nullsense.harpe.firefox.json ← Firefox host manifest template
-│   └── install.sh                       ← Installs host manifests
+├── store/                  ← store listing assets + screenshot generator
+├── scripts/package.sh      ← builds per-browser store zips
 └── README.md
 ```
+
+The native host now lives in the `harpe` engine (`harpe --native-host`,
+`harpe install-host`), not in this repo.
 
 No build step required — the extension is plain vanilla JS (ES2020).
 
@@ -90,44 +87,36 @@ set (`nativeMessaging` is **not** requested here).
 ### Optional: the Harpe engine (save anywhere, per-type folders, yt-dlp video)
 
 Only needed if you click **"Enable Harpe engine"** in settings — that requests
-the optional `nativeMessaging` permission on the spot, then talks to a small
-local helper. Harpe has a **stable extension ID** baked into `manifest.json` (via
-the `"key"` field), so the native host only has to be registered once — no
-per-load ID juggling.
+the optional `nativeMessaging` permission on the spot, then talks to the local
+engine. The engine **is its own native host and registers itself**, so there's no
+separate script to run.
 
 - Chromium ID: `ginhcamellmffiamggkiaemdklcnechf`
 - Firefox ID:  `harpe@nullsense.com`
 
-### Step 1 — Install the `harpe` engine
+### Step 1 — Install the `harpe` engine (registers itself)
 
 ```sh
-uv tool install harpe      # or have `harpe` on PATH / in ~/bin
+uv tool install harpe      # also auto-registers the native host on first run
 harpe --help               # verify
 ```
 
-### Step 2 — Register the native host (one command)
+`harpe` registers the browser native-messaging host the first time it runs (for
+every detected Chromium & Firefox browser; Windows via the registry). To do it
+explicitly, or after publishing to a store with a different id:
 
 ```sh
-# macOS / Linux — auto-detects every installed browser, no arguments needed:
-host/install.sh
-
-# Windows (Chrome, Chromium, Edge, Brave, Firefox):
-host\install_host.bat
+harpe install-host                      # (re)register for detected browsers
+harpe install-host --chrome-id <ID>     # also allow another Chromium id
+harpe install-host --firefox-id <ID>    # also allow another Firefox id
+harpe install-host --all                # write even to browsers not detected yet
+harpe uninstall-host                    # remove everywhere
 ```
 
-`install.sh` writes the host manifest into the `NativeMessagingHosts` directory
-of each browser it finds (Chrome, Chromium, Brave, Edge, Vivaldi, Helium,
-Firefox, LibreWolf, Zen). Useful flags:
+The host manifest's `path` points at a tiny launcher that runs
+`harpe --native-host`, so upgrading `harpe` needs no re-register.
 
-| Flag | Effect |
-|------|--------|
-| _(none)_ | install for all detected browsers using the baked IDs |
-| `--all` | also write to browsers that aren't detected yet |
-| `--chrome-id <ID>` | additionally allow another Chromium ID (e.g. the Web Store ID once published) |
-| `--firefox-id <ID>` | additionally allow another Firefox add-on ID |
-| `--uninstall` | remove the host manifest everywhere |
-
-### Step 3 — Load the extension
+### Step 2 — Load the extension
 
 **Chrome / Chromium / Edge / Brave / Helium:** `chrome://extensions` →
 **Developer mode** → **Load unpacked** → pick the `extension/` folder. The ID
@@ -148,14 +137,15 @@ scripts/package.sh        # → dist/harpe-firefox-<ver>.zip
 `dist/harpe-firefox-<ver>.zip`. The ID comes from
 `browser_specific_settings.gecko.id`.
 
-### Step 4 — Verify
+### Step 3 — Verify
 
 Open an image-heavy page, click the Harpe icon, pick images, **Grab**. If the
-helper isn't reachable the popup shows a setup hint. Test the host directly:
+engine isn't reachable the popup shows a setup hint. Sanity-check the host
+protocol directly:
 
 ```sh
-echo '{"urls":["https://example.com/test.jpg"],"referer":"https://example.com"}' \
-  | python3 host/harpe_host.py
+printf '\x10\x00\x00\x00{"ping": true}' | harpe --native-host | tail -c +5
+# → {"ok": true, "pong": true, "defaults": {...}, "version": "..."}
 ```
 
 ### Native messaging host manifest locations
@@ -184,8 +174,9 @@ each step a single action:
    host permission (see [`PRIVACY.md`](PRIVACY.md) — nothing is sent to us), and
    submit for review. `nativeMessaging` is an **optional** permission requested
    only when the user enables the engine, so the base listing stays lean.
-2. **Helper** — one command: `host/install.sh` (or `install_host.bat`). The
-   popup links here automatically when the helper is missing.
+2. **Engine** — one command: `uv tool install harpe`, which registers the native
+   host itself (first run or `harpe install-host`). The popup links here when the
+   engine is missing.
 
 ### Building the store packages
 
@@ -209,19 +200,17 @@ add-on be **signed by Mozilla** (automatic on submit). Both stores want a privac
 policy — [`PRIVACY.md`](PRIVACY.md) — and a listing description justifying
 `<all_urls>`.
 
-**Python vs Rust?** The host can be *any* executable — a Python script (what we
-use), a shell script, or a compiled Go/Rust binary. A compiled binary is only
-worth it if you want a zero-dependency, single-file helper. Here it's pointless:
-`harpe` itself is Python, so Python is already required — the host stays a small
-`.py` (with a `.bat` shim on Windows, which needs `.exe`/`.bat`, not `.py`).
+The host registration is owned by `harpe` (`harpe install-host` writes a launcher
++ the per-browser manifests / Windows registry keys), so there is nothing host-
+related to bundle into the store package.
 
 ### Keeping dev and Web Store IDs the same
 
 The published Chrome Web Store ID is assigned by Google when you first create the
 item, and may differ from the baked dev ID. To unify them, after creating the
 draft item open **Package → View public key**, copy it into `manifest.json`'s
-`"key"`, and re-run `host/install.sh --chrome-id <store-id>` (the host allows
-multiple origins, so dev + store IDs can both work).
+`"key"`, then run `harpe install-host --chrome-id <store-id>` (the host allows
+multiple origins, so dev + store IDs both work).
 
 > **Signing key:** the manifest `"key"` is the *public* half. The matching
 > private key lives **outside this repo** at `~/.config/harpe-extension/key.pem`
@@ -269,16 +258,19 @@ All URLs are resolved to absolute, deduplicated, and sorted by pixel area (large
 
 ## Engine contract
 
-```
-harpe -F - --json --referer <page-url>
-# stdin:  one image URL per line
-# stdout: JSON array [{url, ok, path|error}, …]
-```
+`harpe --native-host` speaks the browser native-messaging protocol in-process and
+dispatches each request to the engine:
 
-The native host wraps this: it receives `{urls, referer, dirs}` from the
-extension (plus `{ping}` for liveness and `{open}` to reveal a folder), maps any
-per-type `dirs` to the engine's `HARPE_*_DIR` env vars, pipes the URL list to
-`harpe`, and returns `{results: […]}` back.
+| Request | Reply |
+|---------|-------|
+| `{ping:true}` | `{ok, pong, defaults:{image,video,audio}, version}` |
+| `{urls, referer, dirs?, items?, group?}` | `{results:[{url, ok, path?, kind?\|error?}]}` |
+| `{open:"<path>"}` | `{ok}` (reveals the folder in the OS file manager) |
+| `{pick:true, start?}` | `{ok, path}` (native folder chooser; `path` null if cancelled) |
+
+`dirs` = per-type roots (Images/Videos/Audio); `items` = per-url
+`{name, author}` for descriptive filenames; `group` = `site｜author｜both｜none`
+nesting. The legacy `harpe -F - --json` CLI path still exists for terminal use.
 
 ## Privacy
 

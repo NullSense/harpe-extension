@@ -440,3 +440,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* engine opt-in button (shown until nativeMessaging is granted) */
 #btn-enable-engine { width: 100%; margin: 2px 0 10px; }
+
+/* per-type path row with a Browse… button + grouping selector */
+.dest-input-row { display: flex; gap: 6px; }
+.dest-input-row .settings-input { flex: 1; min-width: 0; }
+.btn-browse { flex: none; white-space: nowrap; }
+#group.settings-input { cursor: pointer; }

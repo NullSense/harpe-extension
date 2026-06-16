@@ -11,8 +11,10 @@
  * Native messaging host name: "com.nullsense.harpe"
  * Protocol: Chrome native messaging (4-byte LE length prefix), JSON messages.
  *
- * Outgoing to host: { urls: string[], referer: string, dest?: string }
- * Incoming from host: { results: [{url, ok, path?, error?}, ...] }
+ * Outgoing to host: { urls, referer, dirs?, items?, group? } | { ping } |
+ *                    { open: path } | { pick: true, start? }
+ * Incoming from host: { results: [{url, ok, path?, kind?, error?}, ...] } |
+ *                     { ok, defaults, version } | { ok, path }
  */
 
 "use strict";
@@ -58,9 +60,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "HARPE_GRAB") {
-    handleGrab(msg.urls, msg.referer, { dirs: msg.dirs, folder: msg.folder })
+    handleGrab(msg.urls, msg.referer, {
+      dirs: msg.dirs, folder: msg.folder, items: msg.items, group: msg.group,
+    })
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
+    return true;
+  }
+
+  // Native folder chooser for the settings "Browse…" button (engine only).
+  if (msg.type === "HARPE_PICK") {
+    pickInHost(msg.start).then(sendResponse).catch((err) =>
+      sendResponse({ ok: false, error: String(err) })
+    );
     return true;
   }
 
@@ -100,58 +112,56 @@ function hasNativePerm() {
   });
 }
 
-// Ask the native host to reveal a saved path in the OS file manager.
-async function openInHost(path) {
+// One request → one reply over a fresh native-messaging port. Resolves the
+// host's reply object, or {ok:false,error} on missing permission/timeout/death.
+// Used by ping, grab, open-folder, and pick-folder.
+async function hostRoundtrip(payload, timeoutMs = 8000) {
   if (!(await hasNativePerm())) return { ok: false, error: "engine not enabled" };
   return new Promise((resolve) => {
     let done = false;
-    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    const finish = (v) => { if (!done) { done = true; try { port.disconnect(); } catch {} resolve(v); } };
     let port;
     try {
       port = chrome.runtime.connectNative(HOST_NAME);
     } catch (e) {
-      return finish({ ok: false, error: String(e) });
+      return resolve({ ok: false, error: String(e) });
     }
-    const timer = setTimeout(() => { try { port.disconnect(); } catch {} finish({ ok: true }); }, 2500);
-    port.onMessage.addListener((m) => { clearTimeout(timer); try { port.disconnect(); } catch {} finish(m || { ok: true }); });
-    port.onDisconnect.addListener(() => { clearTimeout(timer); finish({ ok: false, error: "host disconnected" }); });
-    try { port.postMessage({ open: path }); } catch (e) { clearTimeout(timer); finish({ ok: false, error: String(e) }); }
+    const timer = setTimeout(() => finish({ ok: false, error: "host timed out" }), timeoutMs);
+    port.onMessage.addListener((m) => { clearTimeout(timer); finish(m || { ok: false, error: "empty reply" }); });
+    port.onDisconnect.addListener(() => {
+      clearTimeout(timer);
+      if (!done) resolve({ ok: false, error: chrome.runtime.lastError?.message || "host disconnected" });
+    });
+    try { port.postMessage(payload); } catch (e) { clearTimeout(timer); finish({ ok: false, error: String(e) }); }
   });
+}
+
+// Reveal a saved path in the OS file manager.
+function openInHost(path) {
+  return hostRoundtrip({ open: path }, 4000);
+}
+
+// Open a native folder chooser; resolves {ok, path} (path null if cancelled).
+function pickInHost(start) {
+  return hostRoundtrip({ pick: true, start: start || "" }, 120000);
 }
 
 // ── Helper detection + routing ────────────────────────────────────────────────
 
-// Probe the native host once. If it answers, the engine is installed and we use
-// it automatically (save anywhere + future video/gigapixel); otherwise we fall
-// back to the built-in chrome.downloads path. No manual toggle needed.
-// Resolves to the host's ping reply ({ok, defaults, ...}) or null if the
-// nativeMessaging permission isn't granted or the host doesn't answer.
-async function pingHost() {
-  if (!(await hasNativePerm())) return null;
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (v) => { if (!done) { done = true; resolve(v); } };
-    let port;
-    try {
-      port = chrome.runtime.connectNative(HOST_NAME);
-    } catch {
-      return finish(null);
-    }
-    // Native hosts cold-start (python + uv shim) — give the first ping headroom.
-    const timer = setTimeout(() => { try { port.disconnect(); } catch {} finish(null); }, 5000);
-    port.onMessage.addListener((m) => { clearTimeout(timer); try { port.disconnect(); } catch {} finish(m || null); });
-    port.onDisconnect.addListener(() => { clearTimeout(timer); finish(null); });
-    try { port.postMessage({ ping: true }); } catch { clearTimeout(timer); finish(null); }
-  });
+// Probe the native host. Resolves its ping reply ({ok, defaults, version}); when
+// the permission is absent or it doesn't answer, ok is false → built-in mode.
+// 5s timeout covers the python/uv cold start.
+function pingHost() {
+  return hostRoundtrip({ ping: true }, 5000);
 }
 
 async function handleGrab(urls, referer, cfg) {
-  // Prefer the engine when the helper is installed; otherwise built-in download.
+  // Prefer the engine when the helper is reachable; otherwise built-in download.
   // Tag the response with which path ran so the popup can correct its mode if a
   // startup ping had wrongly concluded the engine was unavailable.
   const m = await pingHost();
   if (m && m.ok) {
-    const r = await handleGrabHost(urls, referer, cfg.dirs);
+    const r = await handleGrabHost(urls, referer, cfg);
     return { ...r, engine: true };
   }
   const r = await handleGrabBuiltin(urls, referer, cfg.folder);
@@ -255,6 +265,10 @@ async function resolveTweetVideos(id) {
   const r = await fetch(url, { headers: { Accept: "application/json" } });
   if (!r.ok) return [];
   const j = await r.json();
+  // A descriptive filename + account so the engine saves "i envision a world….mp4"
+  // under the author's folder, instead of the opaque CDN basename.
+  const author = j.user?.screen_name || j.user?.name || "";
+  const name = (j.text || "").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim().slice(0, 80);
   const out = [];
   for (const m of (j.mediaDetails || [])) {
     if ((m.type === "video" || m.type === "animated_gif") && m.video_info?.variants) {
@@ -264,7 +278,10 @@ async function resolveTweetVideos(id) {
       if (best) {
         const dm = /\/(\d+)x(\d+)\//.exec(best.url);
         const w = dm ? +dm[1] : 0, h = dm ? +dm[2] : 0;
-        out.push({ url: best.url, kind: "video", poster: m.media_url_https || null, w, h, area: w * h });
+        out.push({
+          url: best.url, kind: "video", poster: m.media_url_https || null,
+          w, h, area: w * h, author: author || undefined, name: name || undefined,
+        });
       }
     }
   }
@@ -273,54 +290,20 @@ async function resolveTweetVideos(id) {
 
 // ── Grab ─────────────────────────────────────────────────────────────────────
 
-async function handleGrabHost(urls, referer, dirs) {
-  return new Promise((resolve) => {
-    let port;
-    let responded = false;
-
-    function finish(result) {
-      if (responded) return;
-      responded = true;
-      try {
-        port.disconnect();
-      } catch {}
-      resolve(result);
-    }
-
-    try {
-      port = chrome.runtime.connectNative(HOST_NAME);
-    } catch (e) {
-      resolve({ ok: false, error: "Could not connect to native host: " + e.message });
-      return;
-    }
-
-    port.onMessage.addListener((msg) => {
-      // Chrome native messaging deserialises JSON for us, so msg is already an object
-      if (msg && typeof msg === "object") {
-        const ok = Array.isArray(msg.results)
-          ? msg.results.every((r) => r.ok !== false)
-          : !!msg.ok;
-        finish({ ok, results: msg.results, raw: msg });
-        notifyDone(msg.results || []);
-      } else {
-        finish({ ok: false, error: "Unexpected response from native host", raw: msg });
-      }
-    });
-
-    port.onDisconnect.addListener(() => {
-      const err = chrome.runtime.lastError;
-      if (!responded) {
-        finish({
-          ok: false,
-          error: err ? err.message : "Native host disconnected unexpectedly",
-        });
-      }
-    });
-
-    // Send the request — Chrome auto-frames with the 4-byte length prefix.
-    // `dirs` carries per-type folders (blank entries = harpe's defaults).
-    port.postMessage({ urls, referer, dirs: dirs || {} });
-  });
+async function handleGrabHost(urls, referer, cfg) {
+  // dirs = per-type folders; items = per-url {name, author}; group = nesting.
+  const msg = await hostRoundtrip({
+    urls,
+    referer,
+    dirs: cfg.dirs || {},
+    items: cfg.items || {},
+    group: cfg.group || "site",
+  }, 300000);
+  if (msg && Array.isArray(msg.results)) {
+    notifyDone(msg.results);
+    return { ok: msg.results.every((r) => r.ok !== false), results: msg.results };
+  }
+  return { ok: false, error: (msg && msg.error) || "Unexpected response from native host" };
 }
 
 // ── Notification ─────────────────────────────────────────────────────────────

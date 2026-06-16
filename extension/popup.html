@@ -28,15 +28,33 @@
     <div class="dest-grid">
       <div class="dest-row" id="row-img">
         <label class="settings-label" for="dest-img" id="lbl-img">Images</label>
-        <input id="dest-img" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+        <div class="dest-input-row">
+          <input id="dest-img" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+          <button class="btn-secondary btn-browse" data-for="dest-img" hidden>Browse…</button>
+        </div>
       </div>
       <div class="dest-row" id="row-vid">
         <label class="settings-label" for="dest-vid">Videos</label>
-        <input id="dest-vid" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+        <div class="dest-input-row">
+          <input id="dest-vid" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+          <button class="btn-secondary btn-browse" data-for="dest-vid" hidden>Browse…</button>
+        </div>
       </div>
       <div class="dest-row" id="row-aud">
         <label class="settings-label" for="dest-aud">Audio</label>
-        <input id="dest-aud" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+        <div class="dest-input-row">
+          <input id="dest-aud" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+          <button class="btn-secondary btn-browse" data-for="dest-aud" hidden>Browse…</button>
+        </div>
+      </div>
+      <div class="dest-row" id="row-group">
+        <label class="settings-label" for="group">Organize into subfolders by</label>
+        <select id="group" class="settings-input">
+          <option value="site">Site (x.com, instagram.com…)</option>
+          <option value="author">Author / account</option>
+          <option value="both">Author then site</option>
+          <option value="none">No subfolders</option>
+        </select>
       </div>
     </div>
 
@@ -65,14 +83,14 @@
 
   <!-- Shown when the native helper isn't installed/reachable -->
   <div id="host-hint" class="host-hint" hidden>
-    <p class="host-hint-title">Native helper not set up</p>
+    <p class="host-hint-title">Engine not set up</p>
     <p>
-      Harpe downloads through a small local helper. Install it once:
+      Install the Harpe engine once — it registers itself as the browser helper:
     </p>
-    <pre class="host-hint-cmd">cd harpe-extension/host &amp;&amp; ./install.sh</pre>
+    <pre class="host-hint-cmd">uv tool install harpe</pre>
     <p>
-      You also need the <code>harpe</code> engine
-      (<code>uv tool install harpe</code>), then reload this extension.
+      Then reload this extension. (If it was already installed, run
+      <code>harpe install-host</code> once.)
       <a id="host-hint-link" href="https://github.com/NullSense/harpe-extension#installation" target="_blank" rel="noopener">Setup guide →</a>
     </p>
   </div>

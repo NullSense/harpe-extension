@@ -20,7 +20,7 @@ let grabInProgress = false;
 // Per-type save folders. `img/vid/aud` are engine paths (blank = engine
 // default); `sub` is the built-in Downloads subfolder. Defaults are filled in
 // from the host's ping reply so the UI shows real paths as placeholders.
-let settings = { img: "", vid: "", aud: "", sub: "" };
+let settings = { img: "", vid: "", aud: "", sub: "", group: "site" };
 let engineDefaults = {
   image: "~/Pictures/harpe",
   video: "~/Videos/harpe",
@@ -118,6 +118,9 @@ const $modeLine = document.getElementById("mode-line");
 const $btnSaveSettings = document.getElementById("btn-save-settings");
 const $settingsStatus = document.getElementById("settings-status");
 const $btnEnableEngine = document.getElementById("btn-enable-engine");
+const $group = document.getElementById("group");
+const $rowGroup = document.getElementById("row-group");
+const $browseButtons = document.querySelectorAll(".btn-browse");
 
 let nativePermGranted = false; // optional nativeMessaging permission state
 let enginePinnedOn = false;    // a successful engine grab proves it works — a
@@ -153,6 +156,19 @@ async function enableEngine() {
   else applyMode();
 }
 
+// "Browse…" → ask the engine host to open a native folder chooser, fill the field.
+async function browseFor(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  try {
+    const r = await chrome.runtime.sendMessage({ type: "HARPE_PICK", start: input.value || "" });
+    if (r && r.ok && r.path) input.value = r.path;
+    else if (r && r.ok === false && r.error && r.error !== "host timed out") {
+      setStatus("Folder picker unavailable — type the path instead", "warn");
+    }
+  } catch { /* ignore */ }
+}
+
 // ── Settings (per-type save folders; engine vs built-in is auto-detected) ──────
 
 // The extension uses the Harpe engine automatically when the local helper is
@@ -174,9 +190,13 @@ function applyMode() {
     $destImg.value = settings.img;
     $destVid.value = settings.vid;
     $destAud.value = settings.aud;
+    $rowGroup.classList.remove("hidden");
+    $group.value = settings.group;
+    for (const b of $browseButtons) b.hidden = false;
     $settingsHelp.innerHTML =
-      "One folder per type — <code>~</code> and <code>$VARS</code> allowed, " +
-      "files grouped by site inside. Blank = the default shown.";
+      "One folder per type — <code>~</code> and <code>$VARS</code> allowed. " +
+      "Browse… picks a folder; the selector sets how downloads are nested. " +
+      "Blank = the default shown.";
   } else {
     if (nativePermGranted) {
       // Permission granted but the local helper isn't answering → needs install.
@@ -191,6 +211,8 @@ function applyMode() {
     $modeLine.className = "mode-line";
     $rowVid.classList.add("hidden");
     $rowAud.classList.add("hidden");
+    $rowGroup.classList.add("hidden");          // built-in always groups by site
+    for (const b of $browseButtons) b.hidden = true;  // browser can't pick a path
     $lblImg.textContent = "Downloads subfolder";
     $destImg.placeholder = "harpe";
     $destImg.value = settings.sub;
@@ -228,16 +250,17 @@ async function detectEngine() {
 
 async function loadSettings() {
   try {
-    const s = await chrome.storage.local.get(["destImg", "destVid", "destAud", "destSub", "dest"]);
+    const s = await chrome.storage.local.get(["destImg", "destVid", "destAud", "destSub", "destGroup", "dest"]);
     settings = {
       // `dest` is the legacy single-folder key — migrate it to the image path.
       img: typeof s.destImg === "string" ? s.destImg : (typeof s.dest === "string" ? s.dest : ""),
       vid: typeof s.destVid === "string" ? s.destVid : "",
       aud: typeof s.destAud === "string" ? s.destAud : "",
       sub: typeof s.destSub === "string" ? s.destSub : "",
+      group: ["site", "author", "both", "none"].includes(s.destGroup) ? s.destGroup : "site",
     };
   } catch {
-    settings = { img: "", vid: "", aud: "", sub: "" };
+    settings = { img: "", vid: "", aud: "", sub: "", group: "site" };
   }
   applyMode();
   detectEngine(); // async — refreshes mode line + real default placeholders
@@ -248,13 +271,14 @@ async function saveSettings() {
     settings.img = $destImg.value.trim();
     settings.vid = $destVid.value.trim();
     settings.aud = $destAud.value.trim();
+    settings.group = $group.value;
   } else {
     settings.sub = $destImg.value.trim();
   }
   try {
     await chrome.storage.local.set({
       destImg: settings.img, destVid: settings.vid,
-      destAud: settings.aud, destSub: settings.sub,
+      destAud: settings.aud, destSub: settings.sub, destGroup: settings.group,
     });
     if (engineAvailable) {
       $settingsStatus.textContent =
@@ -461,13 +485,25 @@ async function doGrab() {
 
   try {
     const urls = [...selected];
+    // Per-url descriptive name + author (e.g. an X video's tweet text/account),
+    // so the engine names the file and nests it by author when asked.
+    const items = {};
+    for (const img of scanResult.images || []) {
+      if (selected.has(img.url) && (img.name || img.author)) {
+        items[img.url] = {};
+        if (img.name) items[img.url].name = img.name;
+        if (img.author) items[img.url].author = img.author;
+      }
+    }
     const result = await chrome.runtime.sendMessage({
       type: "HARPE_GRAB",
       urls,
       referer: scanResult.pageUrl,
-      // Engine uses per-type dirs; built-in uses the Downloads subfolder. Both
-      // are sent — the background picks based on whether the host is reachable.
+      // Engine uses per-type dirs + grouping + item metadata; built-in uses the
+      // Downloads subfolder. All are sent — background picks based on the host.
       dirs: { image: settings.img, video: settings.vid, audio: settings.aud },
+      group: settings.group,
+      items,
       folder: settings.sub,
     });
 
@@ -544,6 +580,9 @@ $btnOpenFolder.addEventListener("click", openSavedFolder);
 $btnEnableEngine.addEventListener("click", enableEngine);
 for (const el of [$destImg, $destVid, $destAud]) {
   el.addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
+}
+for (const b of $browseButtons) {
+  b.addEventListener("click", () => browseFor(b.dataset.for));
 }
 
 function init() {
