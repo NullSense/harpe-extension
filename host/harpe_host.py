@@ -114,17 +114,61 @@ def find_harpe() -> str:
     )
 
 
+def _linux_session_env() -> dict:
+    """Reconstruct the desktop session env. The browser may launch the native
+    host without WAYLAND_DISPLAY/DISPLAY/DBUS, which makes GUI openers no-op
+    silently — recover them from the runtime dir so xdg-open can reach the WM."""
+    env = os.environ.copy()
+    try:
+        uid = os.getuid()
+    except AttributeError:
+        return env
+    run = env.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
+    env.setdefault("XDG_RUNTIME_DIR", run)
+    if not env.get("WAYLAND_DISPLAY") and not env.get("DISPLAY"):
+        for name in ("wayland-1", "wayland-0"):
+            if os.path.exists(os.path.join(run, name)):
+                env["WAYLAND_DISPLAY"] = name
+                break
+        if "WAYLAND_DISPLAY" not in env:
+            env["DISPLAY"] = env.get("DISPLAY", ":0")
+    if not env.get("DBUS_SESSION_BUS_ADDRESS"):
+        bus = os.path.join(run, "bus")
+        if os.path.exists(bus):
+            env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={bus}"
+    return env
+
+
 def open_in_file_manager(target: str) -> None:
-    """Reveal a saved file (or folder) in the OS file manager."""
+    """Reveal a saved file (or folder) in the OS file manager. Raises if no
+    opener could be launched (so the extension can tell the user the path)."""
     p = Path(os.path.expanduser(os.path.expandvars(target)))
-    folder = p if p.is_dir() else p.parent
+    folder = str(p if p.is_dir() else p.parent)
+
     if sys.platform == "darwin":
-        cmd = ["open", str(folder)]
-    elif os.name == "nt":
-        cmd = ["explorer", str(folder)]
-    else:
-        cmd = ["xdg-open", str(folder)]
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(["open", folder], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    if os.name == "nt":
+        subprocess.Popen(["explorer", folder])
+        return
+
+    env = _linux_session_env()
+    # Try a generic opener first, then common file managers (whichever exists).
+    candidates = [["xdg-open", folder], ["gio", "open", folder], ["nautilus", folder],
+                  ["dolphin", folder], ["thunar", folder], ["nemo", folder],
+                  ["pcmanfm", folder], ["gdbus", "call", "-e", "-d",
+                   "org.freedesktop.FileManager1", "-o", "/org/freedesktop/FileManager1",
+                   "-m", "org.freedesktop.FileManager1.ShowFolders",
+                   f"['file://{folder}']", ""]]
+    for cmd in candidates:
+        if not shutil.which(cmd[0]):
+            continue
+        try:
+            subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except Exception as exc:
+            log.warning("opener %s failed: %s", cmd[0], exc)
+    raise RuntimeError("no file manager found (tried xdg-open, gio, nautilus, dolphin, thunar, nemo, pcmanfm)")
 
 
 # Per-media-type save folders. The engine reads these env vars at startup and

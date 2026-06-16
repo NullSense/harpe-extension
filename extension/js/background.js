@@ -137,7 +137,8 @@ async function pingHost() {
     } catch {
       return finish(null);
     }
-    const timer = setTimeout(() => { try { port.disconnect(); } catch {} finish(null); }, 2500);
+    // Native hosts cold-start (python + uv shim) — give the first ping headroom.
+    const timer = setTimeout(() => { try { port.disconnect(); } catch {} finish(null); }, 5000);
     port.onMessage.addListener((m) => { clearTimeout(timer); try { port.disconnect(); } catch {} finish(m || null); });
     port.onDisconnect.addListener(() => { clearTimeout(timer); finish(null); });
     try { port.postMessage({ ping: true }); } catch { clearTimeout(timer); finish(null); }
@@ -146,10 +147,15 @@ async function pingHost() {
 
 async function handleGrab(urls, referer, cfg) {
   // Prefer the engine when the helper is installed; otherwise built-in download.
+  // Tag the response with which path ran so the popup can correct its mode if a
+  // startup ping had wrongly concluded the engine was unavailable.
   const m = await pingHost();
-  return m && m.ok
-    ? handleGrabHost(urls, referer, cfg.dirs)
-    : handleGrabBuiltin(urls, referer, cfg.folder);
+  if (m && m.ok) {
+    const r = await handleGrabHost(urls, referer, cfg.dirs);
+    return { ...r, engine: true };
+  }
+  const r = await handleGrabBuiltin(urls, referer, cfg.folder);
+  return { ...r, engine: false };
 }
 
 // ── Built-in downloader (chrome.downloads — no native host) ───────────────────

@@ -80,13 +80,22 @@ async function openSavedFolder() {
   if (!lastSaved) return;
   $btnOpenFolder.disabled = true;
   try {
+    let resp;
     if (lastSaved.path) {
-      await chrome.runtime.sendMessage({ type: "HARPE_OPEN", path: lastSaved.path });
+      resp = await chrome.runtime.sendMessage({ type: "HARPE_OPEN", path: lastSaved.path });
     } else if (lastSaved.downloadId !== undefined) {
-      await chrome.runtime.sendMessage({ type: "HARPE_OPEN_DOWNLOAD", id: lastSaved.downloadId });
+      resp = await chrome.runtime.sendMessage({ type: "HARPE_OPEN_DOWNLOAD", id: lastSaved.downloadId });
     }
-  } catch { /* best-effort */ }
-  finally { $btnOpenFolder.disabled = false; }
+    if (resp && resp.ok === false) {
+      const where = lastSaved.path ? dirOf(lastSaved.path) : "your Downloads folder";
+      setStatus(`Couldn't open the folder automatically — it's at ${where}`, "warn");
+    }
+  } catch (e) {
+    const where = lastSaved.path ? dirOf(lastSaved.path) : "your Downloads folder";
+    setStatus(`Couldn't open the folder (${e.message}) — it's at ${where}`, "warn");
+  } finally {
+    $btnOpenFolder.disabled = false;
+  }
 }
 
 // A grab error means the native helper is missing/unreachable when the message
@@ -111,6 +120,8 @@ const $settingsStatus = document.getElementById("settings-status");
 const $btnEnableEngine = document.getElementById("btn-enable-engine");
 
 let nativePermGranted = false; // optional nativeMessaging permission state
+let enginePinnedOn = false;    // a successful engine grab proves it works — a
+                               // later slow ping must not downgrade the UI
 
 function hasNativePerm() {
   return new Promise((resolve) => {
@@ -200,7 +211,7 @@ async function detectEngine() {
   }
   try {
     const r = await chrome.runtime.sendMessage({ type: "HARPE_PING" });
-    engineAvailable = Boolean(r && r.available);
+    engineAvailable = Boolean(r && r.available) || enginePinnedOn;
     if (r && r.defaults) {
       engineDefaults = {
         image: r.defaults.image || engineDefaults.image,
@@ -264,6 +275,9 @@ function toggleSettings() {
   const open = $settings.hidden;
   $settings.hidden = !open;
   $btnSettings.setAttribute("aria-expanded", String(open));
+  // Re-probe on open so a stale "helper isn't responding" (from a slow startup
+  // ping) self-corrects without needing a reload.
+  if (open) detectEngine();
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -457,6 +471,17 @@ async function doGrab() {
     });
 
     if (!result) throw new Error("No response from background");
+
+    // The grab is the ground truth: if it ran through the engine, a startup ping
+    // that wrongly concluded "no engine" gets corrected here so the settings UI
+    // and messaging stay coherent with where files actually landed.
+    if (result.engine) {
+      enginePinnedOn = true;
+      nativePermGranted = true;
+      engineAvailable = true;
+      applyMode();    // coherent immediately (defaults are correct fallbacks)
+      detectEngine(); // best-effort: refine placeholders if the ping succeeds
+    }
 
     // Whole-grab failure (e.g. native helper missing) — no per-image results.
     if (result.ok === false && (!result.results || result.results.length === 0)) {
