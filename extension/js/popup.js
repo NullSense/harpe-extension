@@ -108,6 +108,39 @@ const $settingsHelp = document.getElementById("settings-help");
 const $modeLine = document.getElementById("mode-line");
 const $btnSaveSettings = document.getElementById("btn-save-settings");
 const $settingsStatus = document.getElementById("settings-status");
+const $btnEnableEngine = document.getElementById("btn-enable-engine");
+
+let nativePermGranted = false; // optional nativeMessaging permission state
+
+function hasNativePerm() {
+  return new Promise((resolve) => {
+    try {
+      chrome.permissions.contains({ permissions: ["nativeMessaging"] }, (g) =>
+        resolve(!!g && !chrome.runtime.lastError)
+      );
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+// Requesting an optional permission must happen from a user gesture (this is
+// wired to the "Enable Harpe engine" button click).
+async function enableEngine() {
+  $btnEnableEngine.disabled = true;
+  try {
+    nativePermGranted = await new Promise((resolve) => {
+      chrome.permissions.request({ permissions: ["nativeMessaging"] }, (g) =>
+        resolve(!!g && !chrome.runtime.lastError)
+      );
+    });
+  } catch {
+    nativePermGranted = false;
+  }
+  $btnEnableEngine.disabled = false;
+  if (nativePermGranted) await detectEngine();
+  else applyMode();
+}
 
 // ── Settings (per-type save folders; engine vs built-in is auto-detected) ──────
 
@@ -115,6 +148,9 @@ const $settingsStatus = document.getElementById("settings-status");
 // installed (save anywhere + video/audio); otherwise it downloads in-browser to
 // the Downloads folder (images only). No toggle — it uses the best available.
 function applyMode() {
+  // The engine is opt-in: nativeMessaging is requested only when the user
+  // clicks "Enable Harpe engine", so the base install asks for fewer perms.
+  $btnEnableEngine.hidden = nativePermGranted;
   if (engineAvailable) {
     $modeLine.textContent = "✓ Harpe engine connected — full power";
     $modeLine.className = "mode-line ok";
@@ -131,9 +167,16 @@ function applyMode() {
       "One folder per type — <code>~</code> and <code>$VARS</code> allowed, " +
       "files grouped by site inside. Blank = the default shown.";
   } else {
-    $modeLine.innerHTML =
-      "Built-in mode — images only, to Downloads. " +
-      "<a id='helper-link' href='https://github.com/NullSense/harpe-extension#installation' target='_blank' rel='noopener'>Install the engine</a> for video/audio + save-anywhere.";
+    if (nativePermGranted) {
+      // Permission granted but the local helper isn't answering → needs install.
+      $modeLine.innerHTML =
+        "Engine enabled, but the helper isn't responding. " +
+        "<a id='helper-link' href='https://github.com/NullSense/harpe-extension#installation' target='_blank' rel='noopener'>Install it</a>, then reopen.";
+    } else {
+      $modeLine.innerHTML =
+        "Built-in mode — images + direct videos save to Downloads. " +
+        "Enable the engine for save-anywhere, per-type folders, and yt-dlp sources.";
+    }
     $modeLine.className = "mode-line";
     $rowVid.classList.add("hidden");
     $rowAud.classList.add("hidden");
@@ -142,11 +185,19 @@ function applyMode() {
     $destImg.value = settings.sub;
     $settingsHelp.innerHTML =
       "Images go to <code>Downloads/&lt;subfolder&gt;/&lt;site&gt;/</code>. " +
-      "Install the engine to choose video/audio folders too.";
+      "Enable the engine to choose video/audio folders too.";
   }
 }
 
 async function detectEngine() {
+  // Never touch the host without the optional permission (avoids a connectNative
+  // that would otherwise throw, and keeps the lean-install promise honest).
+  nativePermGranted = await hasNativePerm();
+  if (!nativePermGranted) {
+    engineAvailable = false;
+    applyMode();
+    return;
+  }
   try {
     const r = await chrome.runtime.sendMessage({ type: "HARPE_PING" });
     engineAvailable = Boolean(r && r.available);
@@ -463,6 +514,7 @@ $btnRescan.addEventListener("click", doScan);
 $btnSettings.addEventListener("click", toggleSettings);
 $btnSaveSettings.addEventListener("click", saveSettings);
 $btnOpenFolder.addEventListener("click", openSavedFolder);
+$btnEnableEngine.addEventListener("click", enableEngine);
 for (const el of [$destImg, $destVid, $destAud]) {
   el.addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
 }

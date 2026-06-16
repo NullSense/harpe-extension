@@ -90,8 +90,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
 });
 
+// nativeMessaging is an OPTIONAL permission (granted on demand from the popup)
+// so the base store install stays lean. Every native-host call gates on it.
+function hasNativePerm() {
+  return new Promise((resolve) => {
+    try {
+      chrome.permissions.contains({ permissions: ["nativeMessaging"] }, (g) =>
+        resolve(!!g && !chrome.runtime.lastError)
+      );
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 // Ask the native host to reveal a saved path in the OS file manager.
-function openInHost(path) {
+async function openInHost(path) {
+  if (!(await hasNativePerm())) return { ok: false, error: "engine not enabled" };
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
@@ -113,8 +128,10 @@ function openInHost(path) {
 // Probe the native host once. If it answers, the engine is installed and we use
 // it automatically (save anywhere + future video/gigapixel); otherwise we fall
 // back to the built-in chrome.downloads path. No manual toggle needed.
-// Resolves to the host's ping reply ({ok, defaults, ...}) or null if absent.
-function pingHost() {
+// Resolves to the host's ping reply ({ok, defaults, ...}) or null if the
+// nativeMessaging permission isn't granted or the host doesn't answer.
+async function pingHost() {
+  if (!(await hasNativePerm())) return null;
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };

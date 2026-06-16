@@ -437,3 +437,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   direction: rtl; text-align: left; /* ellipsize the *start* so the filename stays visible */
 }
 .saved-bar .btn-secondary { flex: none; }
+
+/* engine opt-in button (shown until nativeMessaging is granted) */
+#btn-enable-engine { width: 100%; margin: 2px 0 10px; }

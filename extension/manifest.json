@@ -13,10 +13,12 @@
     "activeTab",
     "scripting",
     "downloads",
-    "nativeMessaging",
     "notifications",
     "storage",
     "sidePanel"
+  ],
+  "optional_permissions": [
+    "nativeMessaging"
   ],
   "host_permissions": [
     "<all_urls>"
