@@ -275,10 +275,6 @@ async function handleGrabHost(urls, referer, dirs) {
   return new Promise((resolve) => {
     let port;
     let responded = false;
-    let buffer = "";
-    let expectedLength = null;
-    let rawBuffer = null; // Uint8Array accumulator for length-prefixed protocol
-    let rawOffset = 0;
 
     function finish(result) {
       if (responded) return;

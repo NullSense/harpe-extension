@@ -82,14 +82,18 @@ No build step required — the extension is plain vanilla JS (ES2020).
 
 ### Just the extension (no setup)
 
-Load `extension/` (see Step 3 below) or install from the store. Done — grabbing
-images works immediately, saving to `Downloads/harpe/<site>/`.
+Load `extension/` (see Step 3 below) or install from the store. Done — finding
+and grabbing **images and direct/X-Twitter videos** works immediately, saving to
+`Downloads/harpe/<site>/`. This needs no native software and a lean permission
+set (`nativeMessaging` is **not** requested here).
 
-### Optional: the Harpe engine (save anywhere, video, gigapixel)
+### Optional: the Harpe engine (save anywhere, per-type folders, yt-dlp video)
 
-Only needed if you tick **"Use the Harpe engine"** in settings. Harpe has a
-**stable extension ID** baked into `manifest.json` (via the `"key"` field), so
-the native host only has to be registered once — no per-load ID juggling.
+Only needed if you click **"Enable Harpe engine"** in settings — that requests
+the optional `nativeMessaging` permission on the spot, then talks to a small
+local helper. Harpe has a **stable extension ID** baked into `manifest.json` (via
+the `"key"` field), so the native host only has to be registered once — no
+per-load ID juggling.
 
 - Chromium ID: `ginhcamellmffiamggkiaemdklcnechf`
 - Firefox ID:  `harpe@nullsense.com`
@@ -164,12 +168,34 @@ helper installed separately. The two-step is unavoidable; the goal is to make
 each step a single action:
 
 1. **Extension** — one click from the Chrome Web Store / Firefox AMO (or "Load
-   unpacked" for dev). $5 one-time Chrome developer registration; zip the
-   `extension/` folder, fill the listing, justify the `nativeMessaging` /
-   `<all_urls>` permissions, submit for review. For a helper-dependent tool,
-   **"unlisted"** visibility or plain GitHub + Developer mode is often saner.
+   unpacked" for dev). $5 one-time Chrome developer registration; build the
+   package with `scripts/package.sh`, fill the listing, justify the `<all_urls>`
+   host permission (see [`PRIVACY.md`](PRIVACY.md) — nothing is sent to us), and
+   submit for review. `nativeMessaging` is an **optional** permission requested
+   only when the user enables the engine, so the base listing stays lean.
 2. **Helper** — one command: `host/install.sh` (or `install_host.bat`). The
    popup links here automatically when the helper is missing.
+
+### Building the store package
+
+```sh
+scripts/package.sh        # → dist/harpe-<version>.zip  (needs only python3)
+```
+
+This zips `extension/` and **strips the dev-only `"key"`** field (the stores
+assign their own ID). The same artifact uploads to **both** Chrome Web Store and
+Firefox AMO — the MV3 manifest is cross-browser:
+
+- `background` declares both `service_worker` (Chrome) and `scripts` (Firefox —
+  it doesn't support service-worker backgrounds), loaded as classic scripts.
+- `side_panel` is Chrome-only; on Firefox the toolbar click falls back to opening
+  the popup as a window (handled in `background.js`). A native Firefox sidebar
+  (`sidebar_action`) is a possible future addition.
+- Firefox requires the `browser_specific_settings.gecko.id` that's already set.
+
+AMO requires the add-on be **signed by Mozilla** (automatic on submit). Both
+stores want a privacy policy — [`PRIVACY.md`](PRIVACY.md) — and a listing
+description justifying `<all_urls>`.
 
 **Python vs Rust?** The host can be *any* executable — a Python script (what we
 use), a shell script, or a compiled Go/Rust binary. A compiled binary is only
@@ -237,10 +263,21 @@ harpe -F - --json --referer <page-url>
 # stdout: JSON array [{url, ok, path|error}, …]
 ```
 
-The native host wraps this exactly: it receives `{urls, referer}` from the extension, pipes the URL list to `harpe`, and returns `{results: […]}` back.
+The native host wraps this: it receives `{urls, referer, dirs}` from the
+extension (plus `{ping}` for liveness and `{open}` to reveal a folder), maps any
+per-type `dirs` to the engine's `HARPE_*_DIR` env vars, pipes the URL list to
+`harpe`, and returns `{results: […]}` back.
 
 ## Privacy
 
-- No telemetry, no external network calls from the extension itself.
-- Images are loaded by the browser (for dimension probing) using your existing session — no credentials leave your browser.
-- The native host only receives URLs you explicitly select and sends them to `harpe` running locally.
+Full policy: [`PRIVACY.md`](PRIVACY.md). In short:
+
+- No telemetry, no analytics, no accounts, no servers operated by us.
+- The page is scanned **locally**; the list of found media never leaves the browser.
+- The only network calls are to fetch the media you choose, and — only on X/Twitter
+  posts — a query to X's public `cdn.syndication.twimg.com` endpoint to locate a
+  tweet's downloadable video (just the public tweet ID is sent).
+- Images are loaded by the browser (for dimension probing) using your existing
+  session — no credentials leave your browser.
+- The optional native host only receives URLs you explicitly select and runs
+  `harpe` locally.

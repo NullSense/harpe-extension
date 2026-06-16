@@ -22,6 +22,12 @@
 (() => {
   "use strict";
 
+  // This script is registered statically (content_scripts) AND re-injected on
+  // demand (chrome.scripting.executeScript in handleScan, for tabs opened before
+  // install). Guard so we don't stack a second message listener on re-injection.
+  if (window.__harpeContentLoaded) return;
+  window.__harpeContentLoaded = true;
+
   const MIN_LONG_EDGE = 100; // px — drop likely icons/spacers
   const IMAGE_EXTS = /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)(\?.*)?$/i;
   const LAZY_ATTRS = [

@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 *.pem
 key.pem
+
+# store build artifacts
+dist/
