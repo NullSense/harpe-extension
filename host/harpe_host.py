@@ -74,25 +74,39 @@ def find_harpe() -> str:
       2. PATH (works if the browser inherited a full PATH)
       3. common install / shim locations, including ~/bin
     """
+    # On Windows the binary is harpe.exe; elsewhere just harpe.
+    names = ["harpe.exe", "harpe"] if os.name == "nt" else ["harpe"]
+
+    def usable(p):
+        return os.path.isfile(p) and (os.name == "nt" or os.access(p, os.X_OK))
+
     # 1. Explicit override — set HARPE_BIN in the host manifest's env if needed.
     override = os.environ.get("HARPE_BIN")
-    if override and os.path.isfile(override) and os.access(override, os.X_OK):
+    if override and usable(override):
         return override
 
     # 2. On PATH (most common after `uv tool install harpe`)
-    found = shutil.which("harpe")
-    if found:
-        return found
+    for n in names:
+        found = shutil.which(n)
+        if found:
+            return found
 
-    # 3. Common locations: uv (~/.local/bin), cargo, and a personal ~/bin shim.
-    candidates = [
-        os.path.expanduser("~/.local/bin/harpe"),
-        os.path.expanduser("~/bin/harpe"),
-        os.path.expanduser("~/.cargo/bin/harpe"),  # in case installed via cargo
+    # 3. Common install / shim locations (uv, cargo, personal bin) — cross-platform.
+    roots = [
+        os.path.expanduser("~/.local/bin"),
+        os.path.expanduser("~/bin"),
+        os.path.expanduser("~/.cargo/bin"),
     ]
-    for c in candidates:
-        if os.path.isfile(c) and os.access(c, os.X_OK):
-            return c
+    if os.name == "nt":
+        roots += [
+            os.path.join(os.environ.get("APPDATA", ""), "Python", "Scripts"),
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "harpe"),
+        ]
+    for r in roots:
+        for n in names:
+            c = os.path.join(r, n)
+            if usable(c):
+                return c
 
     raise FileNotFoundError(
         "harpe binary not found. Install it with: uv tool install harpe, "
