@@ -29,6 +29,11 @@
   window.__harpeContentLoaded = true;
 
   const MIN_LONG_EDGE = 100; // px — drop likely icons/spacers
+  // Perf budgets: probing loads the actual image to read its size, so cap how
+  // many we fetch and how many run at once; cap the background-image DOM walk too.
+  const PROBE_CAP = 80;        // max images network-probed for dimensions
+  const PROBE_CONCURRENCY = 6; // simultaneous probe loads
+  const MAX_BG_NODES = 2500;   // elements scanned for CSS background-image
   const IMAGE_EXTS = /\.(jpe?g|png|gif|webp|avif|svg|bmp|tiff?|ico)(\?.*)?$/i;
   const LAZY_ATTRS = [
     "data-src",
@@ -115,14 +120,16 @@
         add(u, src);
     }
 
-    // 3. CSS background-image on visible elements (cheap subset — body + children up to 5 levels)
-    // Use getComputedStyle on elements that have a background
+    // 3. CSS background-image — getComputedStyle is the costly part, so cap how
+    //    many elements we inspect (huge pages have tens of thousands of nodes).
     const walker = document.createTreeWalker(
       document.body || document.documentElement,
       NodeFilter.SHOW_ELEMENT
     );
     let node;
-    while ((node = walker.nextNode())) {
+    let bgScanned = 0;
+    while ((node = walker.nextNode()) && bgScanned < MAX_BG_NODES) {
+      bgScanned++;
       try {
         const style = window.getComputedStyle(node);
         const bg = style.backgroundImage;
@@ -183,23 +190,44 @@
     });
   }
 
+  // Run async tasks with bounded concurrency (avoids opening hundreds of image
+  // connections at once on media-heavy pages).
+  async function pooled(items, limit, worker) {
+    const out = new Array(items.length);
+    let i = 0;
+    async function lane() {
+      while (i < items.length) {
+        const idx = i++;
+        out[idx] = await worker(items[idx], idx);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, lane));
+    return out;
+  }
+
   async function run() {
     const candidates = collectCandidates();
 
-    // Resolve dimensions
-    const withDims = await Promise.all(
-      candidates.map(async ({ url, el }) => {
-        let dims = dimsFromEl(el);
-        if (!dims) dims = await probeDims(url);
-        return {
-          url,
-          w: dims.w,
-          h: dims.h,
-          area: dims.w * dims.h,
-          longEdge: Math.max(dims.w, dims.h),
-        };
-      })
-    );
+    // Cheap pass: dimensions already known from the rendered <img> element.
+    const known = [];
+    const needProbe = [];
+    for (const c of candidates) {
+      const dims = dimsFromEl(c.el);
+      if (dims) known.push({ url: c.url, ...dims });
+      else needProbe.push(c);
+    }
+
+    // Costly pass: probing fetches the image, so cap the count + concurrency.
+    // Anything beyond the cap is kept with unknown size (sorts last, not dropped).
+    const probeList = needProbe.slice(0, PROBE_CAP);
+    const overflow = needProbe.slice(PROBE_CAP);
+    const probed = await pooled(probeList, PROBE_CONCURRENCY, async ({ url }) => {
+      const dims = await probeDims(url);
+      return { url, w: dims.w, h: dims.h };
+    });
+
+    const withDims = [...known, ...probed, ...overflow.map((c) => ({ url: c.url, w: 0, h: 0 }))]
+      .map((d) => ({ ...d, area: d.w * d.h, longEdge: Math.max(d.w, d.h) }));
 
     // Sort by area descending
     withDims.sort((a, b) => b.area - a.area);

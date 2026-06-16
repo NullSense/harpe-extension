@@ -313,6 +313,7 @@ function renderGrid(images) {
     const thumb = document.createElement("img");
     thumb.className = "thumb";
     thumb.loading = "lazy";
+    thumb.decoding = "async";
     // Videos show their poster (the MP4 url is what gets grabbed).
     thumb.src = img.poster || img.url;
     thumb.alt = "";

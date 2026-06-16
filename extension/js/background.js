@@ -19,30 +19,26 @@
 
 const HOST_NAME = "com.nullsense.harpe";
 
-// ── Side panel ───────────────────────────────────────────────────────────────
+// ── Panel: each browser's native surface ──────────────────────────────────────
+// Firefox → native sidebar (sidebarAction). Chrome/Edge → native side panel.
+// Anything else → a popup window. All API access is guarded so the same bundle
+// loads on a browser that lacks any one of them.
 
-// Open side panel on icon click (MV3 side panel API)
-chrome.action.onClicked.addListener(async (tab) => {
-  try {
-    // sidePanel.open is available in Chrome 116+
-    await chrome.sidePanel.open({ tabId: tab.id });
-  } catch (e) {
-    // Fallback for browsers that don't support sidePanel (Firefox, older Chrome)
-    // Open as a popup window instead
+if (chrome.action?.onClicked) {
+  chrome.action.onClicked.addListener(async (tab) => {
+    if (chrome.sidebarAction?.toggle) {
+      try { await chrome.sidebarAction.toggle(); return; } catch {}
+    }
+    if (chrome.sidePanel?.open) {
+      try { await chrome.sidePanel.open({ tabId: tab.id }); return; } catch {}
+    }
     const url = chrome.runtime.getURL("popup.html") + "?tabId=" + tab.id;
-    await chrome.windows.create({
-      url,
-      type: "popup",
-      width: 900,
-      height: 700,
-    });
-  }
-});
+    await chrome.windows.create({ url, type: "popup", width: 900, height: 700 });
+  });
+}
 
-// Allow the side panel to be shown on any tab
-chrome.sidePanel
-  ?.setPanelBehavior?.({ openPanelOnActionClick: true })
-  .catch(() => {});
+// Chrome: clicking the toolbar icon opens the side panel directly.
+chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
 
 // ── Message routing ──────────────────────────────────────────────────────────
 
