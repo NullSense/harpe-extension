@@ -198,16 +198,23 @@ By default Harpe sorts downloads by media type into per-site subfolders:
 | Media  | Default folder | macOS |
 |--------|----------------|-------|
 | Images | `~/Pictures/harpe/<site>/` | same |
-| Video  | `~/Videos/harpe/` | `~/Movies/harpe/` |
-| Audio  | `~/Music/harpe/` | same |
+| Video  | `~/Videos/harpe/<site>/` | `~/Movies/harpe/<site>/` |
+| Audio  | `~/Music/harpe/<site>/` | same |
 
-The extension downloads images, so they land in `~/Pictures/harpe/<site>/`.
+**Each path is independently configurable.** Click the **⚙ gear** in the popup:
 
-To change it, click the **⚙ gear** in the popup and set **Save images to** an
-absolute path (e.g. `~/Downloads/art` or `$HOME/refs`). `~` and `$VARS` are
-expanded by the native host. Leave it blank to use the defaults above. The
-choice is stored with `chrome.storage` and sent to the host as `dest`, which
-passes it to `harpe --dest`.
+- With the engine installed you get three fields — **Images**, **Videos**,
+  **Audio** — each pre-filled with its real default as a placeholder. Set any to
+  an absolute path (e.g. `~/Downloads/art`, `$HOME/refs/clips`); `~` and `$VARS`
+  are expanded by the native host. Leave a field blank to keep its default.
+- Without the engine (built-in mode), only images can be saved, so you get a
+  single **Downloads subfolder** field (default `harpe`); files land in
+  `Downloads/<subfolder>/<site>/`.
+
+Each non-blank engine path is passed to `harpe` via its `HARPE_IMG_DIR` /
+`HARPE_VID_DIR` / `HARPE_AUD_DIR` environment variable; files are still grouped
+by source site inside. Choices persist with `chrome.storage`. After a grab the
+popup shows where the files landed with an **Open folder** button.
 
 ## Content-script scanning details
 

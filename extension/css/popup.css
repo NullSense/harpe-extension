@@ -148,7 +148,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   margin-bottom: 6px;
 }
 
-.settings-row { display: flex; gap: 8px; }
+.settings-row { display: flex; gap: 8px; align-items: center; }
+
+/* per-media-type save paths */
+.dest-grid { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.dest-row .settings-label { margin-bottom: 3px; }
+.dest-row.hidden { display: none; }
 
 .settings-input {
   flex: 1;

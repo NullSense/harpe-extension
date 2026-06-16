@@ -55,12 +55,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "HARPE_PING") {
-    pingHost().then((available) => sendResponse({ available }));
+    pingHost().then((m) =>
+      sendResponse({ available: !!(m && m.ok), defaults: (m && m.defaults) || null })
+    );
     return true;
   }
 
   if (msg.type === "HARPE_GRAB") {
-    handleGrab(msg.urls, msg.referer, msg.folder)
+    handleGrab(msg.urls, msg.referer, { dirs: msg.dirs, folder: msg.folder })
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
@@ -111,6 +113,7 @@ function openInHost(path) {
 // Probe the native host once. If it answers, the engine is installed and we use
 // it automatically (save anywhere + future video/gigapixel); otherwise we fall
 // back to the built-in chrome.downloads path. No manual toggle needed.
+// Resolves to the host's ping reply ({ok, defaults, ...}) or null if absent.
 function pingHost() {
   return new Promise((resolve) => {
     let done = false;
@@ -119,21 +122,21 @@ function pingHost() {
     try {
       port = chrome.runtime.connectNative(HOST_NAME);
     } catch {
-      return finish(false);
+      return finish(null);
     }
-    const timer = setTimeout(() => { try { port.disconnect(); } catch {} finish(false); }, 2500);
-    port.onMessage.addListener((m) => { clearTimeout(timer); try { port.disconnect(); } catch {} finish(!!(m && m.ok)); });
-    port.onDisconnect.addListener(() => { clearTimeout(timer); finish(false); });
-    try { port.postMessage({ ping: true }); } catch { clearTimeout(timer); finish(false); }
+    const timer = setTimeout(() => { try { port.disconnect(); } catch {} finish(null); }, 2500);
+    port.onMessage.addListener((m) => { clearTimeout(timer); try { port.disconnect(); } catch {} finish(m || null); });
+    port.onDisconnect.addListener(() => { clearTimeout(timer); finish(null); });
+    try { port.postMessage({ ping: true }); } catch { clearTimeout(timer); finish(null); }
   });
 }
 
-async function handleGrab(urls, referer, folder) {
+async function handleGrab(urls, referer, cfg) {
   // Prefer the engine when the helper is installed; otherwise built-in download.
-  const hasHost = await pingHost();
-  return hasHost
-    ? handleGrabHost(urls, referer, folder)
-    : handleGrabBuiltin(urls, referer, folder);
+  const m = await pingHost();
+  return m && m.ok
+    ? handleGrabHost(urls, referer, cfg.dirs)
+    : handleGrabBuiltin(urls, referer, cfg.folder);
 }
 
 // ── Built-in downloader (chrome.downloads — no native host) ───────────────────
@@ -251,7 +254,7 @@ async function resolveTweetVideos(id) {
 
 // ── Grab ─────────────────────────────────────────────────────────────────────
 
-async function handleGrabHost(urls, referer, dest) {
+async function handleGrabHost(urls, referer, dirs) {
   return new Promise((resolve) => {
     let port;
     let responded = false;
@@ -300,8 +303,8 @@ async function handleGrabHost(urls, referer, dest) {
     });
 
     // Send the request — Chrome auto-frames with the 4-byte length prefix.
-    // `dest` is optional (blank = harpe's default media folders).
-    port.postMessage({ urls, referer, dest: dest || "" });
+    // `dirs` carries per-type folders (blank entries = harpe's defaults).
+    port.postMessage({ urls, referer, dirs: dirs || {} });
   });
 }
 

@@ -17,7 +17,15 @@ let scanResult = null; // { images, pageUrl, pageTitle }
 let selected = new Set(); // Set<url string>
 let tabId = null;
 let grabInProgress = false;
-let saveDest = ""; // chosen save folder
+// Per-type save folders. `img/vid/aud` are engine paths (blank = engine
+// default); `sub` is the built-in Downloads subfolder. Defaults are filled in
+// from the host's ping reply so the UI shows real paths as placeholders.
+let settings = { img: "", vid: "", aud: "", sub: "" };
+let engineDefaults = {
+  image: "~/Pictures/harpe",
+  video: "~/Videos/harpe",
+  audio: "~/Music/harpe",
+};
 let engineAvailable = false; // true once the native helper answers a ping
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
@@ -90,36 +98,51 @@ function looksLikeHostError(msg) {
 }
 const $btnSettings = document.getElementById("btn-settings");
 const $settings = document.getElementById("settings");
-const $dest = document.getElementById("dest");
-const $destLabel = document.getElementById("dest-label");
+const $destImg = document.getElementById("dest-img");
+const $destVid = document.getElementById("dest-vid");
+const $destAud = document.getElementById("dest-aud");
+const $rowVid = document.getElementById("row-vid");
+const $rowAud = document.getElementById("row-aud");
+const $lblImg = document.getElementById("lbl-img");
 const $settingsHelp = document.getElementById("settings-help");
 const $modeLine = document.getElementById("mode-line");
 const $btnSaveSettings = document.getElementById("btn-save-settings");
 const $settingsStatus = document.getElementById("settings-status");
 
-// ── Settings (save folder; mode is auto-detected) ──────────────────────────────
+// ── Settings (per-type save folders; engine vs built-in is auto-detected) ──────
 
 // The extension uses the Harpe engine automatically when the local helper is
-// installed (save anywhere + video/gigapixel); otherwise it downloads in-browser
-// to your Downloads folder. No toggle — it just uses the best available.
+// installed (save anywhere + video/audio); otherwise it downloads in-browser to
+// the Downloads folder (images only). No toggle — it uses the best available.
 function applyMode() {
   if (engineAvailable) {
     $modeLine.textContent = "✓ Harpe engine connected — full power";
     $modeLine.className = "mode-line ok";
-    $destLabel.textContent = "Save to (absolute folder)";
-    $dest.placeholder = "~/Pictures/harpe  (blank = engine default)";
+    $rowVid.classList.remove("hidden");
+    $rowAud.classList.remove("hidden");
+    $lblImg.textContent = "Images";
+    $destImg.placeholder = engineDefaults.image;
+    $destVid.placeholder = engineDefaults.video;
+    $destAud.placeholder = engineDefaults.audio;
+    $destImg.value = settings.img;
+    $destVid.value = settings.vid;
+    $destAud.value = settings.aud;
     $settingsHelp.innerHTML =
-      "The local engine is installed: saves to any folder " +
-      "(<code>~</code> and <code>$VARS</code> allowed), plus video &amp; gigapixel.";
+      "One folder per type — <code>~</code> and <code>$VARS</code> allowed, " +
+      "files grouped by site inside. Blank = the default shown.";
   } else {
     $modeLine.innerHTML =
       "Built-in mode — images only, to Downloads. " +
-      "<a id='helper-link' href='https://github.com/NullSense/harpe-extension#installation' target='_blank' rel='noopener'>Install the engine</a> for save-anywhere + video.";
+      "<a id='helper-link' href='https://github.com/NullSense/harpe-extension#installation' target='_blank' rel='noopener'>Install the engine</a> for video/audio + save-anywhere.";
     $modeLine.className = "mode-line";
-    $destLabel.textContent = "Save to (subfolder of Downloads)";
-    $dest.placeholder = "harpe  (organised by site)";
+    $rowVid.classList.add("hidden");
+    $rowAud.classList.add("hidden");
+    $lblImg.textContent = "Downloads subfolder";
+    $destImg.placeholder = "harpe";
+    $destImg.value = settings.sub;
     $settingsHelp.innerHTML =
-      "Images download to your <code>Downloads</code> folder, grouped by site. No setup needed.";
+      "Images go to <code>Downloads/&lt;subfolder&gt;/&lt;site&gt;/</code>. " +
+      "Install the engine to choose video/audio folders too.";
   }
 }
 
@@ -127,6 +150,13 @@ async function detectEngine() {
   try {
     const r = await chrome.runtime.sendMessage({ type: "HARPE_PING" });
     engineAvailable = Boolean(r && r.available);
+    if (r && r.defaults) {
+      engineDefaults = {
+        image: r.defaults.image || engineDefaults.image,
+        video: r.defaults.video || engineDefaults.video,
+        audio: r.defaults.audio || engineDefaults.audio,
+      };
+    }
   } catch {
     engineAvailable = false;
   }
@@ -135,25 +165,44 @@ async function detectEngine() {
 
 async function loadSettings() {
   try {
-    const { dest } = await chrome.storage.local.get("dest");
-    saveDest = typeof dest === "string" ? dest : "";
-    $dest.value = saveDest;
+    const s = await chrome.storage.local.get(["destImg", "destVid", "destAud", "destSub", "dest"]);
+    settings = {
+      // `dest` is the legacy single-folder key — migrate it to the image path.
+      img: typeof s.destImg === "string" ? s.destImg : (typeof s.dest === "string" ? s.dest : ""),
+      vid: typeof s.destVid === "string" ? s.destVid : "",
+      aud: typeof s.destAud === "string" ? s.destAud : "",
+      sub: typeof s.destSub === "string" ? s.destSub : "",
+    };
   } catch {
-    saveDest = "";
+    settings = { img: "", vid: "", aud: "", sub: "" };
   }
   applyMode();
-  detectEngine(); // async — refreshes the mode line when the probe returns
+  detectEngine(); // async — refreshes mode line + real default placeholders
 }
 
 async function saveSettings() {
-  saveDest = $dest.value.trim();
+  if (engineAvailable) {
+    settings.img = $destImg.value.trim();
+    settings.vid = $destVid.value.trim();
+    settings.aud = $destAud.value.trim();
+  } else {
+    settings.sub = $destImg.value.trim();
+  }
   try {
-    await chrome.storage.local.set({ dest: saveDest });
-    $settingsStatus.textContent = engineAvailable
-      ? (saveDest ? `Engine → ${saveDest}` : "Engine → default folders")
-      : (saveDest ? `Downloads/${saveDest}/<site>/` : "Downloads/harpe/<site>/");
+    await chrome.storage.local.set({
+      destImg: settings.img, destVid: settings.vid,
+      destAud: settings.aud, destSub: settings.sub,
+    });
+    if (engineAvailable) {
+      $settingsStatus.textContent =
+        `img → ${settings.img || engineDefaults.image} · ` +
+        `vid → ${settings.vid || engineDefaults.video} · ` +
+        `aud → ${settings.aud || engineDefaults.audio}`;
+    } else {
+      $settingsStatus.textContent = `Downloads/${settings.sub || "harpe"}/<site>/`;
+    }
     $settingsStatus.hidden = false;
-    setTimeout(() => { $settingsStatus.hidden = true; }, 2600);
+    setTimeout(() => { $settingsStatus.hidden = true; }, 3200);
   } catch (e) {
     $settingsStatus.textContent = "Could not save: " + e.message;
     $settingsStatus.hidden = false;
@@ -349,7 +398,10 @@ async function doGrab() {
       type: "HARPE_GRAB",
       urls,
       referer: scanResult.pageUrl,
-      folder: saveDest,
+      // Engine uses per-type dirs; built-in uses the Downloads subfolder. Both
+      // are sent — the background picks based on whether the host is reachable.
+      dirs: { image: settings.img, video: settings.vid, audio: settings.aud },
+      folder: settings.sub,
     });
 
     if (!result) throw new Error("No response from background");
@@ -411,7 +463,9 @@ $btnRescan.addEventListener("click", doScan);
 $btnSettings.addEventListener("click", toggleSettings);
 $btnSaveSettings.addEventListener("click", saveSettings);
 $btnOpenFolder.addEventListener("click", openSavedFolder);
-$dest.addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
+for (const el of [$destImg, $destVid, $destAud]) {
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter") saveSettings(); });
+}
 
 function init() {
   loadSettings();

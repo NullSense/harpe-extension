@@ -23,22 +23,30 @@
   <!-- Settings drawer (toggled by the gear) -->
   <section id="settings" class="settings" hidden>
     <p id="mode-line" class="mode-line">Checking for the Harpe engine…</p>
-    <label class="settings-label" for="dest" id="dest-label">Save to</label>
-    <div class="settings-row">
-      <input
-        id="dest"
-        class="settings-input"
-        type="text"
-        spellcheck="false"
-        autocomplete="off"
-        placeholder="harpe"
-      />
-      <button id="btn-save-settings" class="btn-primary">Save</button>
+
+    <div class="dest-grid">
+      <div class="dest-row" id="row-img">
+        <label class="settings-label" for="dest-img" id="lbl-img">Images</label>
+        <input id="dest-img" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+      </div>
+      <div class="dest-row" id="row-vid">
+        <label class="settings-label" for="dest-vid">Videos</label>
+        <input id="dest-vid" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+      </div>
+      <div class="dest-row" id="row-aud">
+        <label class="settings-label" for="dest-aud">Audio</label>
+        <input id="dest-aud" class="settings-input" type="text" spellcheck="false" autocomplete="off" />
+      </div>
     </div>
+
+    <div class="settings-row">
+      <button id="btn-save-settings" class="btn-primary">Save</button>
+      <p id="settings-status" class="settings-status" hidden></p>
+    </div>
+
     <p class="settings-help" id="settings-help">
-      Images download to your <code>Downloads</code> folder, grouped by site. No setup needed.
+      Each type saves to its own folder, grouped by site inside. Leave blank for the default.
     </p>
-    <p id="settings-status" class="settings-status" hidden></p>
   </section>
 
   <div class="page-title-bar">

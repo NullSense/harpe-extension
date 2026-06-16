@@ -113,13 +113,42 @@ def open_in_file_manager(target: str) -> None:
     subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def run_harpe(urls: list[str], referer: str, dest: str | None = None) -> list[dict]:
+# Per-media-type save folders. The engine reads these env vars at startup and
+# groups files by source host inside each. We map the extension's settings to
+# them when spawning harpe (a fresh process each grab, so env is read fresh).
+_DIR_ENV = {"image": "HARPE_IMG_DIR", "video": "HARPE_VID_DIR", "audio": "HARPE_AUD_DIR"}
+
+
+def default_dirs() -> dict:
+    """The engine's built-in defaults (mirrors harpe.config) — used so the
+    extension can show real paths as placeholders."""
+    home = Path.home()
+    videos = "Movies" if sys.platform == "darwin" else "Videos"
+    return {
+        "image": str(home / "Pictures" / "harpe"),
+        "video": str(home / videos / "harpe"),
+        "audio": str(home / "Music" / "harpe"),
+    }
+
+
+def run_harpe(urls, referer, dest=None, dirs=None) -> list[dict]:
     """
     Invoke `harpe -F - --json --referer <referer> [--dest <dest>]`, pipe urls on
     stdin, return parsed JSON array.
+
+    `dirs` is an optional {image,video,audio: path} map; each non-empty entry is
+    passed to the engine via its HARPE_*_DIR env var (per-type customisation).
+    `dest` is the legacy single-folder override (used by the CLI).
     """
     harpe_bin = find_harpe()
     url_payload = "\n".join(urls) + "\n"
+
+    env = os.environ.copy()
+    if isinstance(dirs, dict):
+        for kind, var in _DIR_ENV.items():
+            v = dirs.get(kind)
+            if isinstance(v, str) and v.strip():
+                env[var] = os.path.expanduser(os.path.expandvars(v.strip()))
 
     cmd = [harpe_bin, "-F", "-", "--json", "--referer", referer]
     if dest:
@@ -131,6 +160,7 @@ def run_harpe(urls: list[str], referer: str, dest: str | None = None) -> list[di
         input=url_payload,
         capture_output=True,
         text=True,
+        env=env,
         timeout=300,  # 5 min max
     )
 
@@ -205,7 +235,7 @@ def main() -> None:
         # Liveness probe — lets the extension auto-detect that the helper is
         # installed and silently upgrade to engine features (no manual toggle).
         if msg.get("ping"):
-            write_message(stdout, {"ok": True, "pong": True})
+            write_message(stdout, {"ok": True, "pong": True, "defaults": default_dirs()})
             continue
 
         # Reveal a saved file/folder in the OS file manager (engine path — the
@@ -229,6 +259,10 @@ def main() -> None:
         if isinstance(dest_raw, str) and dest_raw.strip():
             dest = os.path.expanduser(os.path.expandvars(dest_raw.strip()))
 
+        # Per-type folders from the extension settings (blank entries fall back
+        # to the engine defaults).
+        dirs = msg.get("dirs") if isinstance(msg.get("dirs"), dict) else None
+
         if not isinstance(urls, list) or not urls:
             write_message(stdout, {"results": [], "error": "no urls provided"})
             continue
@@ -240,7 +274,7 @@ def main() -> None:
             continue
 
         try:
-            results = run_harpe(urls, referer, dest)
+            results = run_harpe(urls, referer, dest, dirs)
             write_message(stdout, {"results": results})
         except FileNotFoundError as exc:
             log.error("%s", exc)
