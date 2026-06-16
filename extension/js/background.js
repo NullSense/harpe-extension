@@ -167,15 +167,49 @@ async function handleScan(tabId) {
     // Already injected or restricted page — ignore, carry on.
   }
 
-  return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, { type: "HARPE_SCAN" }, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve(response);
-      }
+  const response = await new Promise((resolve, reject) => {
+    chrome.tabs.sendMessage(tabId, { type: "HARPE_SCAN" }, (r) => {
+      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+      else resolve(r);
     });
   });
+
+  // Fold any grabbable videos into the image grid (prepended): direct <video>
+  // files the content script found, plus X/Twitter MP4s resolved here.
+  if (response && response.ok) {
+    const vids = [...(response.videos || [])];
+    if (response.tweetId) {
+      try { vids.push(...await resolveTweetVideos(response.tweetId)); } catch { /* best-effort */ }
+    }
+    if (vids.length) response.images = [...vids, ...(response.images || [])];
+  }
+  return response;
+}
+
+// X/Twitter public syndication endpoint → MP4 variants. No auth, no yt-dlp; the
+// background can fetch cross-origin thanks to <all_urls> host permission.
+function tweetToken(id) {
+  return ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
+}
+async function resolveTweetVideos(id) {
+  const url = `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${tweetToken(id)}&lang=en`;
+  const r = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!r.ok) return [];
+  const j = await r.json();
+  const out = [];
+  for (const m of (j.mediaDetails || [])) {
+    if ((m.type === "video" || m.type === "animated_gif") && m.video_info?.variants) {
+      const best = m.video_info.variants
+        .filter((v) => v.content_type === "video/mp4" && v.url)
+        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      if (best) {
+        const dm = /\/(\d+)x(\d+)\//.exec(best.url);
+        const w = dm ? +dm[1] : 0, h = dm ? +dm[2] : 0;
+        out.push({ url: best.url, kind: "video", poster: m.media_url_https || null, w, h, area: w * h });
+      }
+    }
+  }
+  return out;
 }
 
 // ── Grab ─────────────────────────────────────────────────────────────────────

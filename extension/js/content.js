@@ -206,8 +206,36 @@
       if (filtered.length === 0) filtered = withDims;
     }
 
+    // Direct <video> sources (skip blob:/MSE — those, like X's player, aren't a
+    // plain file; X video is resolved from its tweet id in the background).
+    const videos = [];
+    for (const v of document.querySelectorAll("video")) {
+      const cand = [v.currentSrc, v.getAttribute("src"),
+        ...[...v.querySelectorAll("source")].map((s) => s.getAttribute("src"))];
+      const url = cand.map(abs).find(Boolean);
+      if (url) {
+        videos.push({
+          url, kind: "video", poster: abs(v.poster) || null,
+          w: v.videoWidth || 0, h: v.videoHeight || 0,
+          area: (v.videoWidth || 0) * (v.videoHeight || 0),
+        });
+      }
+    }
+
+    // X / Twitter post id → the background resolves its MP4s via the public
+    // syndication API (the video lives behind an MSE blob, not in the DOM).
+    let tweetId = null;
+    try {
+      if (/(^|\.)(twitter|x)\.com$/i.test(location.hostname)) {
+        const m = /\/status(?:es)?\/(\d+)/.exec(location.pathname);
+        if (m) tweetId = m[1];
+      }
+    } catch { /* ignore */ }
+
     return {
       images: filtered.map(({ url, w, h, area }) => ({ url, w, h, area })),
+      videos,
+      tweetId,
       pageUrl: document.location.href,
       pageTitle: document.title,
     };

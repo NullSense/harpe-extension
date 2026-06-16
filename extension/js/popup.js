@@ -129,7 +129,7 @@ function updateControls() {
   $btnGrab.textContent = n > 0 ? `Grab ${n}` : "Grab";
   $btnGrab.disabled = n === 0 || grabInProgress;
   $count.textContent =
-    scanResult ? `${scanResult.images.length} images found` : "";
+    scanResult ? `${scanResult.images.length} found` : "";
 }
 
 function fmtDims(w, h) {
@@ -158,18 +158,26 @@ function renderGrid(images) {
 
   for (const img of images) {
     const card = document.createElement("div");
-    card.className = "card";
+    card.className = "card" + (img.kind === "video" ? " is-video" : "");
     card.dataset.url = img.url;
 
     const thumb = document.createElement("img");
     thumb.className = "thumb";
     thumb.loading = "lazy";
-    thumb.src = img.url;
+    // Videos show their poster (the MP4 url is what gets grabbed).
+    thumb.src = img.poster || img.url;
     thumb.alt = "";
     thumb.onerror = () => {
       thumb.src = ""; // blank on error
       card.classList.add("error");
     };
+
+    if (img.kind === "video") {
+      const play = document.createElement("div");
+      play.className = "play-badge";
+      play.textContent = "▶ video";
+      card.appendChild(play);
+    }
 
     const info = document.createElement("div");
     info.className = "info";

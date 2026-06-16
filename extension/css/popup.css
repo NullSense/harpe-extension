@@ -406,3 +406,13 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   background: rgba(224, 121, 95, 0.30);
   color: var(--error);
 }
+
+/* video candidates (X/Twitter MP4s, direct <video> files) */
+.card.is-video .thumb { background: #0a0806; }
+.card .play-badge {
+  position: absolute; left: 6px; top: 6px; z-index: 2;
+  padding: 2px 7px; border-radius: 999px;
+  background: rgba(200, 150, 90, 0.92); color: #1a120b;
+  font: 600 10px/1.4 ui-monospace, monospace; letter-spacing: 0.02em;
+  pointer-events: none;
+}
