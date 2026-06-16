@@ -195,8 +195,9 @@ function applyMode() {
     $destImg.placeholder = "harpe";
     $destImg.value = settings.sub;
     $settingsHelp.innerHTML =
-      "Images go to <code>Downloads/&lt;subfolder&gt;/&lt;site&gt;/</code>. " +
-      "Enable the engine to choose video/audio folders too.";
+      "Files save to <code>Downloads/&lt;subfolder&gt;/&lt;site&gt;/</code> " +
+      "(browser limit). Enable the engine to save anywhere and sort video/audio " +
+      "into their own folders.";
   }
 }
 
