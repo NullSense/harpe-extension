@@ -33,7 +33,7 @@ Native messaging host  (harpe --native-host)
   │  speaks 4-byte LE length-prefix + UTF-8 JSON protocol, in-process
   │  {urls, referer, dirs?, items?, group?} | {ping} | {open} | {pick}
   ↓
-harpe engine  (installed via: uv tool install harpe — registers the host itself)
+harpe engine  (installed via: uv tool install git+https://github.com/NullSense/harpe — registers the host itself)
   │  downloads with correct UA/Referer, descriptive naming, per-type folders
   │  reply = JSON: {results:[{url, ok, path|error, kind}]} | {ok, defaults} | {ok, path}
   ↑
@@ -46,7 +46,7 @@ Results flow back up through host → background → popup → UI badge per imag
 
 1. **harpe** engine installed (it registers itself as the native host):
    ```sh
-   uv tool install harpe
+   uv tool install git+https://github.com/NullSense/harpe
    ```
    Verify: `harpe --help`
 
@@ -97,7 +97,7 @@ separate script to run.
 ### Step 1 — Install the `harpe` engine (registers itself)
 
 ```sh
-uv tool install harpe      # also auto-registers the native host on first run
+uv tool install git+https://github.com/NullSense/harpe      # also auto-registers the native host on first run
 harpe --help               # verify
 ```
 
@@ -174,7 +174,7 @@ each step a single action:
    host permission (see [`PRIVACY.md`](PRIVACY.md) — nothing is sent to us), and
    submit for review. `nativeMessaging` is an **optional** permission requested
    only when the user enables the engine, so the base listing stays lean.
-2. **Engine** — one command: `uv tool install harpe`, which registers the native
+2. **Engine** — one command: `uv tool install git+https://github.com/NullSense/harpe`, which registers the native
    host itself (first run or `harpe install-host`). The popup links here when the
    engine is missing.
 
